@@ -436,7 +436,7 @@ func TestFileCredentialStoreLogsInAndReportsTheFile(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":1,"username":"demo"}`)
 	}))
 	defer server.Close()
-	app, out, stderr := storeApp(t, server)
+	app, _, stderr := storeApp(t, server)
 	app.In = strings.NewReader("pasted-token\n")
 	path := filepath.Join(app.CredentialDirectory, credential.FileName)
 	if code := app.Execute(context.Background(), []string{"--credential-store", "file", "--api-url", server.URL + "/api/v1/", "auth", "login", "--with-token"}); code != ExitSuccess {
