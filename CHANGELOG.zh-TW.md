@@ -8,6 +8,10 @@ Release workflow 會把對應版本的段落與英文版 [CHANGELOG.md](CHANGELO
 
 ## [未發布]
 
+## [0.7.0] - 2026-09-14
+
+Taiga CLI 現在可以在沒有桌面環境的 Linux 伺服器、容器或 SSH 連線上使用；過去在這些環境中，每個指令都會卡在 keyring 錯誤。只有在確定沒有 keyring 服務時，憑證才會改存到檔案，也可以用 `--credential-store` 自行指定存放方式。多個指令同時刷新過期的 token 時，不會再讓彼此的登入失效，`auth status` 也會顯示目前使用的憑證存放在哪裡。
+
 ### 新增
 
 - 新增 `--credential-store` 與 `TAIGA_CREDENTIAL_STORE`，用來指定憑證存放方式：`auto`（預設，行為見下方）；`keyring` 無法使用 keyring 時直接失敗，絕不寫檔案；`file` 只用憑證檔、完全不接觸 keyring，適合伺服器；`none` 不儲存任何憑證，改用 `TAIGA_TOKEN`。在 `none` 模式下執行 `auth login` 會在詢問任何資料之前就拒絕。
@@ -239,7 +243,8 @@ brew install koukeneko/tap/aihki
 
 已針對 Taiga 6.10.2 以固定 image digest 執行完整 Docker E2E 驗證。支援 macOS、Linux、Windows 的 `amd64` 與 `arm64`。
 
-[未發布]: https://github.com/KoukeNeko/taiga-cli/compare/v0.6.0...HEAD
+[未發布]: https://github.com/KoukeNeko/taiga-cli/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.7.0
 [0.6.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.6.0
 [0.5.2]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.5.2
 [0.5.1]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.5.1

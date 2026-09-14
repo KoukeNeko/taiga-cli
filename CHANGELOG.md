@@ -8,6 +8,10 @@ The release workflow publishes the section matching the tag as the GitHub Releas
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-14
+
+Taiga CLI now works on a Linux server, container or SSH session without a desktop, where every command used to stop at a keyring error. Credentials go to a file only when there is provably no keyring service, and `--credential-store` lets you choose instead. Commands that refresh an expired token at the same time no longer invalidate each other's login, and `auth status` says where the credential in use is kept.
+
 ### Added
 
 - `--credential-store` and `TAIGA_CREDENTIAL_STORE` choose where credentials are kept: `auto` (the default, described below), `keyring` to fail rather than ever write a file, `file` to use only the credentials file and never contact a keyring, which suits a server, or `none` to keep nothing and rely on `TAIGA_TOKEN`. `auth login` under `none` is refused before it asks for anything.
@@ -239,7 +243,8 @@ Or download the archive for your platform below, verify it against `SHA256SUMS`,
 
 Verified against Taiga 6.10.2 through a full Docker E2E run against a pinned image digest. Supports macOS, Linux, and Windows on `amd64` and `arm64`.
 
-[Unreleased]: https://github.com/KoukeNeko/taiga-cli/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/KoukeNeko/taiga-cli/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.7.0
 [0.6.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.6.0
 [0.5.2]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.5.2
 [0.5.1]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.5.1
