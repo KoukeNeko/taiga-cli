@@ -73,6 +73,11 @@ func (a *App) login(ctx context.Context, options loginOptions) error {
 	if options.SiteURL != "" && a.global.APIURL != "" {
 		return usageError("--url and --api-url are mutually exclusive")
 	}
+	// Refused before anything is asked or sent, rather than after someone
+	// has typed a password for a login that could not be kept.
+	if mode, err := a.credentialMode(); err == nil && mode == credential.ModeNone {
+		return validationError("credential_store_disabled", "--credential-store=none keeps no credential, so there is nothing to log in to; pass the token in TAIGA_TOKEN instead, or choose another --credential-store")
+	}
 	settings, cfg, err := a.resolveSettings(ctx)
 	if err != nil {
 		return err
@@ -98,7 +103,11 @@ func (a *App) login(ctx context.Context, options loginOptions) error {
 	if err := a.Config.Save(cfg); err != nil {
 		return err
 	}
-	saved, err := a.Credentials.Set(credential.Account(settings.Profile, target.apiURL), tokens)
+	store, err := a.credentials()
+	if err != nil {
+		return err
+	}
+	saved, err := store.Set(credential.Account(settings.Profile, target.apiURL), tokens)
 	if err != nil {
 		return err
 	}
@@ -369,7 +378,11 @@ func (a *App) authLogoutCommand() *cobra.Command {
 			if settings.APIURL == "" {
 				return validationError("missing_api_url", "current profile has no API URL")
 			}
-			if err := a.Credentials.Delete(credential.Account(settings.Profile, settings.APIURL)); err != nil {
+			store, err := a.credentials()
+			if err != nil {
+				return err
+			}
+			if err := store.Delete(credential.Account(settings.Profile, settings.APIURL)); err != nil {
 				return err
 			}
 			result := map[string]any{"profile": settings.Profile, "logged_out": true}
@@ -397,13 +410,31 @@ func (a *App) authStatusCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result := map[string]any{"profile": settings.Profile, "api_url": settings.APIURL, "project": settings.Project, "user": user, "authenticated": true}
+			result := map[string]any{"profile": settings.Profile, "api_url": settings.APIURL, "project": settings.Project, "user": user, "authenticated": true, "credential_source": settings.CredentialSource}
+			if settings.CredentialFile != "" {
+				result["credential_file"] = settings.CredentialFile
+			}
 			if a.global.JSON {
 				return a.renderer().Data(result)
 			}
 			_, _ = fmt.Fprintf(a.Out, "Authenticated to %s as %s (profile %s)\n", settings.APIURL, user.Username, settings.Profile)
+			// Where the credential lives is said every time, not only at
+			// login, so that a token that went to a file does not stay
+			// unnoticed there.
+			_, _ = fmt.Fprintf(a.Out, "Credential: %s\n", describeCredentialSource(settings))
 			return nil
 		},
+	}
+}
+
+func describeCredentialSource(settings Settings) string {
+	switch settings.CredentialSource {
+	case credentialFromEnvironment:
+		return "TAIGA_TOKEN environment variable (not stored)"
+	case credentialFromFile:
+		return settings.CredentialFile + " (plain text, readable only by your user)"
+	default:
+		return "OS keyring"
 	}
 }
 

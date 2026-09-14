@@ -195,7 +195,19 @@ interface, without running another service.
    A Linux server, container, or SSH session without a desktop usually has no keyring service. There
    the token goes to `~/.config/taiga-cli/credentials.json` instead, readable only by your user, and
    the login says so. A keyring that exists but is locked is reported as an error rather than
-   bypassed.
+   bypassed. `taiga auth status` always says where the credential is kept.
+
+   `--credential-store` (or `TAIGA_CREDENTIAL_STORE`) chooses this instead of leaving it to `auto`:
+
+   | Value | Behaviour |
+   | --- | --- |
+   | `auto` | The OS keyring, or the file only where there is provably no keyring service (default) |
+   | `keyring` | The OS keyring only; fail rather than write a file |
+   | `file` | The file only; never contact a keyring. Suits servers |
+   | `none` | Keep nothing; pass the token in `TAIGA_TOKEN` |
+
+   The file is not encrypted. It is protected by file permissions alone, and backups or snapshots of
+   the home directory include it.
 
    To skip the first question, pass `--url` with the URL of any page inside the Taiga web app, such
    as a project or backlog page; the API's address works too, and nothing beyond the site you typed
@@ -285,7 +297,7 @@ Resolution order, highest first:
 
 ```text
 command flag
-→ TAIGA_PROFILE / TAIGA_API_URL / TAIGA_PROJECT / TAIGA_TOKEN
+→ TAIGA_PROFILE / TAIGA_API_URL / TAIGA_PROJECT / TAIGA_TOKEN / TAIGA_CREDENTIAL_STORE
 → Git-local taiga.profile / taiga.project
 → current profile
 → safe defaults

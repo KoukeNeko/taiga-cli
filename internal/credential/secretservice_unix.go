@@ -54,6 +54,13 @@ func secretServiceMissing() bool {
 	return !slices.Contains(activatable, secretServiceName)
 }
 
+// headless reports whether this session has no desktop. A Secret Service that
+// needs unlocking shows its prompt on one, and without one the prompt fails at
+// once, leaving an error that says nothing of why.
+func headless() bool {
+	return os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == ""
+}
+
 // sessionBusKnown reports whether there is a session bus address to use,
 // looking where godbus looks before it falls back to launching a bus.
 func sessionBusKnown() bool {

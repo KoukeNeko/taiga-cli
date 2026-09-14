@@ -30,18 +30,20 @@ type fakeCredentials struct {
 	file string
 }
 
-func (f *fakeCredentials) Get(account string) (credential.Tokens, error) {
+func (f *fakeCredentials) Get(account string) (credential.Tokens, credential.Location, error) {
 	value, ok := f.values[account]
 	if !ok {
-		return credential.Tokens{}, credential.ErrNotFound
+		return credential.Tokens{}, credential.Location{}, credential.ErrNotFound
 	}
-	return value, nil
+	return value, credential.Location{File: f.file}, nil
 }
 
-func (f *fakeCredentials) Set(account string, tokens credential.Tokens) (credential.Saved, error) {
+func (f *fakeCredentials) Set(account string, tokens credential.Tokens) (credential.Location, error) {
 	f.values[account] = tokens
-	return credential.Saved{File: f.file}, nil
+	return credential.Location{File: f.file}, nil
 }
+
+func (f *fakeCredentials) Lock(context.Context) (func(), error) { return func() {}, nil }
 
 func (f *fakeCredentials) Delete(account string) error {
 	delete(f.values, account)

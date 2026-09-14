@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -358,6 +361,133 @@ func TestLoginSaysWhenTheCredentialWentToAFile(t *testing.T) {
 		}
 		if !strings.Contains(stderr.String(), "No OS keyring is available, so the credential was saved to /home/demo/.config/taiga-cli/credentials.json") {
 			t.Errorf("stderr = %q", stderr.String())
+		}
+	}
+}
+
+func TestAnUnknownCredentialStoreIsAUsageError(t *testing.T) {
+	app, _, stderr, _ := testApp(t, nil)
+	if code := app.Execute(context.Background(), []string{"--credential-store", "vault", "auth", "status"}); code != ExitUsage {
+		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "auto, keyring, file, none") {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+}
+
+// auth status says where the credential lives on every run, since a login's
+// one notice that the token went to a file is easy to miss.
+func TestAuthStatusNamesTheCredentialSource(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id":1,"username":"demo"}`)
+	}))
+	defer server.Close()
+	cases := []struct {
+		name, file, token, wantJSON, wantText string
+	}{
+		{name: "keyring", wantJSON: `"credential_source":"keyring"`, wantText: "Credential: OS keyring"},
+		{name: "file", file: "/home/demo/.config/taiga-cli/credentials.json", wantJSON: `"credential_file":"/home/demo/.config/taiga-cli/credentials.json","credential_source":"file"`, wantText: "Credential: /home/demo/.config/taiga-cli/credentials.json (plain text, readable only by your user)"},
+		{name: "environment", token: "env-token", wantJSON: `"credential_source":"environment"`, wantText: "Credential: TAIGA_TOKEN environment variable (not stored)"},
+	}
+	for _, test := range cases {
+		for _, asJSON := range []bool{false, true} {
+			app, out, stderr, credentials := testApp(t, server)
+			credentials.file = test.file
+			app.Getenv = func(name string) string {
+				if name == "TAIGA_TOKEN" {
+					return test.token
+				}
+				return ""
+			}
+			args := []string{"auth", "status"}
+			if asJSON {
+				args = append([]string{"--json"}, args...)
+			}
+			if code := app.Execute(context.Background(), args); code != ExitSuccess {
+				t.Fatalf("%s json=%v: exit=%d stderr=%s", test.name, asJSON, code, stderr.String())
+			}
+			want := test.wantText
+			if asJSON {
+				want = test.wantJSON
+			}
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("%s json=%v: stdout = %s, want %s", test.name, asJSON, out.String(), want)
+			}
+		}
+	}
+}
+
+// storeApp is an App that builds its credential store from --credential-store
+// and a temporary directory, as the real binary does, rather than a fake.
+func storeApp(t *testing.T, server *httptest.Server) (*App, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
+	app, out, stderr, _ := testApp(t, server)
+	app.Credentials = nil
+	app.CredentialDirectory = t.TempDir()
+	return app, out, stderr
+}
+
+func TestFileCredentialStoreLogsInAndReportsTheFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer pasted-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = io.WriteString(w, `{"id":1,"username":"demo"}`)
+	}))
+	defer server.Close()
+	app, out, stderr := storeApp(t, server)
+	app.In = strings.NewReader("pasted-token\n")
+	path := filepath.Join(app.CredentialDirectory, credential.FileName)
+	if code := app.Execute(context.Background(), []string{"--credential-store", "file", "--api-url", server.URL + "/api/v1/", "auth", "login", "--with-token"}); code != ExitSuccess {
+		t.Fatalf("login exit=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), path) {
+		t.Fatalf("login did not name %s: %s", path, stderr.String())
+	}
+	// A new App stands for the next command, which must find the credential
+	// in the file again rather than in memory.
+	next, out, stderr := storeApp(t, server)
+	next.CredentialDirectory = app.CredentialDirectory
+	next.Getenv = func(name string) string {
+		if name == "TAIGA_CREDENTIAL_STORE" {
+			return "file"
+		}
+		return ""
+	}
+	if code := next.Execute(context.Background(), []string{"--api-url", server.URL + "/api/v1/", "auth", "status"}); code != ExitSuccess {
+		t.Fatalf("status exit=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(out.String(), "Credential: "+path) {
+		t.Fatalf("status stdout = %s", out.String())
+	}
+}
+
+func TestNoneCredentialStoreRefusesToLogIn(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		t.Fatalf("a login that cannot be kept contacted Taiga: %s", r.URL.Path)
+	}))
+	defer server.Close()
+	app, _, stderr := storeApp(t, server)
+	app.In = strings.NewReader("pasted-token\n")
+	code := app.Execute(context.Background(), []string{"--credential-store", "none", "--api-url", server.URL + "/api/v1/", "auth", "login", "--with-token"})
+	if code != ExitValidation || !strings.Contains(stderr.String(), "TAIGA_TOKEN") {
+		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
+	}
+	if entries, _ := os.ReadDir(app.CredentialDirectory); len(entries) != 0 {
+		t.Fatalf("none mode wrote %v", entries)
+	}
+}
+
+func TestAKeyringErrorWithoutADesktopSaysWhatToDo(t *testing.T) {
+	cause := errors.New("failed to unlock correct collection '/org/freedesktop/secrets/collection/login'")
+	for _, headless := range []bool{true, false} {
+		known, body := classifyError(&credential.KeyringError{Op: "read OS keyring", Err: cause, Headless: headless})
+		if known.Code != "credential_store_unavailable" || !strings.Contains(body.Message, "read OS keyring: failed to unlock") {
+			t.Fatalf("headless=%v: %#v", headless, body)
+		}
+		if hinted := strings.Contains(body.Message, "--credential-store=file"); hinted != headless {
+			t.Errorf("headless=%v: hint present=%v in %q", headless, hinted, body.Message)
 		}
 	}
 }

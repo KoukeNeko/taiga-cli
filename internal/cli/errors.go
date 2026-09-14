@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KoukeNeko/taiga-cli/internal/credential"
 	"github.com/KoukeNeko/taiga-cli/internal/output"
 	"github.com/KoukeNeko/taiga-cli/internal/taiga"
 	"github.com/spf13/cobra"
@@ -106,6 +107,17 @@ func classifyError(err error) (*contractError, output.ErrorBody) {
 		}
 		known = &contractError{Code: string(apiErr.Kind), Message: apiErr.Message, ExitCode: exitCode, Retryable: apiErr.Retryable, Details: apiErr.Details, Cause: err}
 		return known, output.ErrorBody{Code: string(apiErr.Kind), Message: apiErr.Message, Retryable: apiErr.Retryable, Details: apiErr.Details, UpstreamStatus: apiErr.UpstreamStatus}
+	}
+	var keyringErr *credential.KeyringError
+	if errors.As(err, &keyringErr) {
+		message := keyringErr.Error()
+		if keyringErr.Headless {
+			// Without a desktop the keyring's unlock prompt fails at once, and
+			// the library's error says nothing of why or what to do instead.
+			message += "; this session has no desktop on which the OS keyring can ask to be unlocked, so unlock it another way (for example `gnome-keyring-daemon --unlock`), or pass --credential-store=file (or set TAIGA_CREDENTIAL_STORE=file) to keep credentials in a file only you can read"
+		}
+		known = &contractError{Code: "credential_store_unavailable", Message: message, ExitCode: ExitGeneric, Cause: err}
+		return known, output.ErrorBody{Code: known.Code, Message: known.Message, Retryable: false}
 	}
 	// Deliberately last of the error checks. A write whose outcome is unknown
 	// carries the cancellation that caused it, so testing for cancellation any

@@ -8,9 +8,16 @@ The release workflow publishes the section matching the tag as the GitHub Releas
 
 ## [Unreleased]
 
+### Added
+
+- `--credential-store` and `TAIGA_CREDENTIAL_STORE` choose where credentials are kept: `auto` (the default, described below), `keyring` to fail rather than ever write a file, `file` to use only the credentials file and never contact a keyring, which suits a server, or `none` to keep nothing and rely on `TAIGA_TOKEN`. `auth login` under `none` is refused before it asks for anything.
+- `auth status` says where the credential in use is kept: the OS keyring, the credentials file with its path, or `TAIGA_TOKEN`. `--json` carries it as `credential_source`, with `credential_file` for a file. A login's one notice that a token went to a file is easy to miss, and this is where to look afterwards.
+
 ### Fixed
 
 - `taiga auth login` works on a Linux machine with no keyring service, such as a server, a container or an SSH session without a desktop. Every command there used to stop at `read OS keyring: The name org.freedesktop.secrets was not provided by any .service files`, including `auth status` and the login that would have fixed it. When the session bus confirms that nothing provides the Secret Service, the credential goes to `credentials.json` in the configuration directory instead, readable only by the user, and the login names the file; `--json` output carries it as `credential_file`. A keyring that exists but is locked or declines is still reported, never bypassed, and so is a session bus that is configured but cannot be reached, such as a stale address or one inherited through `sudo`. A credential saved to the file keeps working after a keyring is installed, takes precedence over any older copy the keyring still holds, and moves into the keyring the next time it is written. A credentials file that other users can read is refused, with the `chmod` that fixes it, rather than silently used.
+- Commands that find the access token expired at the same moment no longer strand each other. Taiga retires a refresh token once it is used, so of several commands refreshing the same pair only the first succeeded, and the rest failed with `Given token not valid for any token type`. A refresh now waits for a lock beside the credentials, reads the stored pair again, and uses a pair another command has just refreshed instead of spending the retired one. Six concurrent `auth status` runs against an expired token now all succeed with a single refresh, where before five of six failed.
+- An OS keyring that cannot be used from a session without a desktop, such as a locked GNOME Keyring over SSH, now reports `credential_store_unavailable` and says how to go on: unlock the keyring another way, or choose `--credential-store=file`. It used to report an unexpected failure quoting only the library's `failed to unlock correct collection`.
 
 ## [0.6.0] - 2026-09-09
 

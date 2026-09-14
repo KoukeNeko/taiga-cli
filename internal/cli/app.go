@@ -22,16 +22,20 @@ import (
 const environmentPrefix = "TAIGA_"
 
 type App struct {
-	In              io.Reader
-	Out             io.Writer
-	Err             io.Writer
-	HTTPClient      *http.Client
-	Config          *config.Store
-	GitLocal        *config.GitLocal
-	Credentials     credential.Store
-	CompletionCache *completioncache.Store
-	Getenv          func(string) string
-	Cwd             string
+	In         io.Reader
+	Out        io.Writer
+	Err        io.Writer
+	HTTPClient *http.Client
+	Config     *config.Store
+	GitLocal   *config.GitLocal
+	// Credentials, when set, is the credential store to use whatever
+	// --credential-store says; tests set it. Otherwise the store is built on
+	// first use from the mode and CredentialDirectory.
+	Credentials         credential.Store
+	CredentialDirectory string
+	CompletionCache     *completioncache.Store
+	Getenv              func(string) string
+	Cwd                 string
 	// StdinTTY reports whether input is a terminal, which is what decides
 	// whether a question may be asked at all. It is left unset outside tests,
 	// where input is a buffer that could never answer one.
@@ -50,6 +54,8 @@ type globalOptions struct {
 	NoColor bool
 	Quiet   bool
 	Verbose bool
+	// CredentialStore is --credential-store as given, empty when not.
+	CredentialStore string
 }
 
 type Settings struct {
@@ -58,7 +64,18 @@ type Settings struct {
 	Project      string `json:"project,omitempty"`
 	Token        string `json:"-"`
 	RefreshToken string `json:"-"`
+	// CredentialSource is where Token came from: credentialFromEnvironment,
+	// credentialFromKeyring, credentialFromFile, or empty when there is none.
+	CredentialSource string `json:"-"`
+	// CredentialFile is the credentials file when that is the source.
+	CredentialFile string `json:"-"`
 }
+
+const (
+	credentialFromEnvironment = "environment"
+	credentialFromKeyring     = "keyring"
+	credentialFromFile        = "file"
+)
 
 func New() (*App, error) {
 	path, err := config.DefaultPath()
@@ -73,16 +90,16 @@ func New() (*App, error) {
 	// attempt itself and watches a transfer for stalling, so an attachment or
 	// a dump is as long as it is rather than as long as thirty seconds allow.
 	return &App{
-		In:              os.Stdin,
-		Out:             os.Stdout,
-		Err:             os.Stderr,
-		HTTPClient:      &http.Client{},
-		Config:          config.NewStore(path),
-		GitLocal:        config.NewGitLocal(cwd),
-		Credentials:     credential.NewKeyringStore(filepath.Join(filepath.Dir(path), credential.FileName)),
-		CompletionCache: completioncache.NewStore(completioncache.DefaultPath(path)),
-		Getenv:          os.Getenv,
-		Cwd:             cwd,
+		In:                  os.Stdin,
+		Out:                 os.Stdout,
+		Err:                 os.Stderr,
+		HTTPClient:          &http.Client{},
+		Config:              config.NewStore(path),
+		GitLocal:            config.NewGitLocal(cwd),
+		CredentialDirectory: filepath.Dir(path),
+		CompletionCache:     completioncache.NewStore(completioncache.DefaultPath(path)),
+		Getenv:              os.Getenv,
+		Cwd:                 cwd,
 	}, nil
 }
 
@@ -141,6 +158,9 @@ func (a *App) rootCommand() *cobra.Command {
 			if a.Getenv("NO_COLOR") != "" {
 				a.global.NoColor = true
 			}
+			if _, err := a.credentialMode(); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -157,6 +177,7 @@ func (a *App) rootCommand() *cobra.Command {
 	flags.BoolVar(&a.global.NoColor, "no-color", false, "disable color output")
 	flags.BoolVarP(&a.global.Quiet, "quiet", "q", false, "suppress non-essential human output")
 	flags.BoolVarP(&a.global.Verbose, "verbose", "v", false, "print redacted HTTP diagnostics to stderr")
+	flags.StringVar(&a.global.CredentialStore, "credential-store", "", "where to keep credentials: auto (the OS keyring, or a file where there is none), keyring, file or none; also TAIGA_CREDENTIAL_STORE")
 	_ = root.RegisterFlagCompletionFunc("profile", a.completeProfiles)
 	_ = root.RegisterFlagCompletionFunc("project", a.completeProjects)
 	root.AddCommand(
@@ -225,18 +246,95 @@ func (a *App) resolveSettings(ctx context.Context) (Settings, config.File, error
 		}
 	}
 	project := firstNonEmpty(a.global.Project, a.env("PROJECT"), local.Project, profile.Project)
-	token := strings.TrimSpace(a.env("TOKEN"))
-	refreshToken := ""
-	if token == "" && apiURL != "" && a.Credentials != nil {
-		tokens, credentialErr := a.Credentials.Get(credential.Account(profileName, apiURL))
-		if credentialErr == nil {
-			token = tokens.AuthToken
-			refreshToken = tokens.RefreshToken
-		} else if !errors.Is(credentialErr, credential.ErrNotFound) {
-			return Settings{}, config.File{}, credentialErr
-		}
+	settings := Settings{Profile: profileName, APIURL: apiURL, Project: project, Token: strings.TrimSpace(a.env("TOKEN"))}
+	if settings.Token != "" {
+		settings.CredentialSource = credentialFromEnvironment
+		return settings, cfg, nil
 	}
-	return Settings{Profile: profileName, APIURL: apiURL, Project: project, Token: token, RefreshToken: refreshToken}, cfg, nil
+	if apiURL == "" {
+		return settings, cfg, nil
+	}
+	store, err := a.credentials()
+	if err != nil {
+		return Settings{}, config.File{}, err
+	}
+	tokens, location, err := store.Get(credential.Account(profileName, apiURL))
+	if errors.Is(err, credential.ErrNotFound) {
+		return settings, cfg, nil
+	}
+	if err != nil {
+		return Settings{}, config.File{}, err
+	}
+	settings.Token, settings.RefreshToken = tokens.AuthToken, tokens.RefreshToken
+	settings.CredentialSource, settings.CredentialFile = credentialFromKeyring, location.File
+	if location.File != "" {
+		settings.CredentialSource = credentialFromFile
+	}
+	return settings, cfg, nil
+}
+
+// credentials returns the credential store --credential-store and
+// TAIGA_CREDENTIAL_STORE select, building it the first time it is needed.
+func (a *App) credentials() (credential.Store, error) {
+	if a.Credentials != nil {
+		return a.Credentials, nil
+	}
+	mode, err := a.credentialMode()
+	if err != nil {
+		return nil, err
+	}
+	// Without a directory the credentials file would land wherever the
+	// command happened to run.
+	if a.CredentialDirectory == "" {
+		return nil, errors.New("no directory is configured for credentials")
+	}
+	a.Credentials = credential.NewStore(mode, a.CredentialDirectory)
+	return a.Credentials, nil
+}
+
+func (a *App) credentialMode() (credential.Mode, error) {
+	mode, err := credential.ParseMode(firstNonEmpty(a.global.CredentialStore, a.env("CREDENTIAL_STORE")))
+	if err != nil {
+		return "", usageError(err.Error())
+	}
+	return mode, nil
+}
+
+// refreshOptions lets a client refresh the stored credential for settings:
+// under the store's lock, starting from whatever pair is stored by then, and
+// saving the pair Taiga hands back. A credential from TAIGA_TOKEN carries no
+// refresh token, so it gets none of this.
+func (a *App) refreshOptions(settings Settings) ([]taiga.ClientOption, error) {
+	if settings.RefreshToken == "" {
+		return nil, nil
+	}
+	store, err := a.credentials()
+	if err != nil {
+		return nil, err
+	}
+	account := credential.Account(settings.Profile, settings.APIURL)
+	save := func(authToken, refreshToken string) error {
+		_, err := store.Set(account, credential.Tokens{AuthToken: authToken, RefreshToken: refreshToken})
+		return err
+	}
+	lock := func(ctx context.Context) (string, string, func(), error) {
+		unlock, err := store.Lock(ctx)
+		if err != nil {
+			return "", "", nil, err
+		}
+		tokens, _, err := store.Get(account)
+		if err != nil {
+			unlock()
+			// Refreshing now would store a credential that a logout in
+			// another process has just removed.
+			if errors.Is(err, credential.ErrNotFound) {
+				return "", "", nil, authRequired("the saved Taiga credential was removed while this command ran; run `taiga auth login`")
+			}
+			return "", "", nil, err
+		}
+		return tokens.AuthToken, tokens.RefreshToken, unlock, nil
+	}
+	return []taiga.ClientOption{taiga.WithRefreshToken(settings.RefreshToken, save), taiga.WithRefreshLock(lock)}, nil
 }
 
 func (a *App) client(ctx context.Context, requireToken bool) (*taiga.Client, Settings, error) {
@@ -251,13 +349,11 @@ func (a *App) client(ctx context.Context, requireToken bool) (*taiga.Client, Set
 		return nil, Settings{}, authRequired("no Taiga credential available; run `taiga auth login` or set TAIGA_TOKEN")
 	}
 	options := []taiga.ClientOption{taiga.WithHTTPClient(a.HTTPClient), taiga.WithToken(settings.Token)}
-	if settings.RefreshToken != "" && a.Credentials != nil {
-		account := credential.Account(settings.Profile, settings.APIURL)
-		options = append(options, taiga.WithRefreshToken(settings.RefreshToken, func(authToken, refreshToken string) error {
-			_, err := a.Credentials.Set(account, credential.Tokens{AuthToken: authToken, RefreshToken: refreshToken})
-			return err
-		}))
+	refresh, err := a.refreshOptions(settings)
+	if err != nil {
+		return nil, Settings{}, err
 	}
+	options = append(options, refresh...)
 	if a.global.Verbose {
 		options = append(options, taiga.WithVerbose(a.Err))
 	}

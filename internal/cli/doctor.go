@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/KoukeNeko/taiga-cli/internal/credential"
 	"github.com/KoukeNeko/taiga-cli/internal/taiga"
 	"github.com/spf13/cobra"
 )
@@ -50,12 +49,12 @@ func (a *App) doctorCommand() *cobra.Command {
 				token = settings.Token
 			}
 			options := []taiga.ClientOption{taiga.WithHTTPClient(a.HTTPClient), taiga.WithToken(token)}
-			if token != "" && settings.RefreshToken != "" && a.Credentials != nil {
-				account := credential.Account(settings.Profile, settings.APIURL)
-				options = append(options, taiga.WithRefreshToken(settings.RefreshToken, func(authToken, refreshToken string) error {
-					_, err := a.Credentials.Set(account, credential.Tokens{AuthToken: authToken, RefreshToken: refreshToken})
+			if token != "" {
+				refresh, err := a.refreshOptions(settings)
+				if err != nil {
 					return err
-				}))
+				}
+				options = append(options, refresh...)
 			}
 			if a.global.Verbose {
 				options = append(options, taiga.WithVerbose(a.Err))
