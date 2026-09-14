@@ -442,8 +442,10 @@ func TestFileCredentialStoreLogsInAndReportsTheFile(t *testing.T) {
 	if code := app.Execute(context.Background(), []string{"--credential-store", "file", "--api-url", server.URL + "/api/v1/", "auth", "login", "--with-token"}); code != ExitSuccess {
 		t.Fatalf("login exit=%d stderr=%s", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), path) {
-		t.Fatalf("login did not name %s: %s", path, stderr.String())
+	// The person chose the file, so the notice must not claim that no
+	// keyring was found: none was looked for.
+	if !strings.Contains(stderr.String(), path) || !strings.Contains(stderr.String(), "--credential-store=file") || strings.Contains(stderr.String(), "No OS keyring") {
+		t.Fatalf("login notice = %s", stderr.String())
 	}
 	// A new App stands for the next command, which must find the credential
 	// in the file again rather than in memory.
@@ -489,5 +491,59 @@ func TestAKeyringErrorWithoutADesktopSaysWhatToDo(t *testing.T) {
 		if hinted := strings.Contains(body.Message, "--credential-store=file"); hinted != headless {
 			t.Errorf("headless=%v: hint present=%v in %q", headless, hinted, body.Message)
 		}
+	}
+}
+
+// Login and logout change the stored credential under the same lock a refresh
+// holds, so neither can be undone by a refresh that was already under way.
+func TestLoginAndLogoutChangeTheCredentialUnderTheRefreshLock(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id":1,"username":"demo"}`)
+	}))
+	defer server.Close()
+	app, _, stderr, credentials := testApp(t, server)
+	app.In = strings.NewReader("pasted-token\n")
+	if code := app.Execute(context.Background(), []string{"--api-url", server.URL + "/api/v1/", "auth", "login", "--with-token"}); code != ExitSuccess {
+		t.Fatalf("login exit=%d stderr=%s", code, stderr.String())
+	}
+	if got := strings.Join(credentials.events, ","); got != "lock,set,unlock" {
+		t.Fatalf("login events = %s", got)
+	}
+	credentials.events = nil
+	if code := app.Execute(context.Background(), []string{"--api-url", server.URL + "/api/v1/", "auth", "logout"}); code != ExitSuccess {
+		t.Fatalf("logout exit=%d stderr=%s", code, stderr.String())
+	}
+	if got := strings.Join(credentials.events, ","); got != "lock,delete,unlock" {
+		t.Fatalf("logout events = %s", got)
+	}
+}
+
+// A credential read from the file and refreshed while a keyring has become
+// available moves into the keyring, and auth status reports where it went
+// rather than the file it was read from.
+func TestAuthStatusReportsWhereARefreshMovedTheCredential(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/auth/refresh":
+			_, _ = io.WriteString(w, `{"auth_token":"new-token","refresh":"new-refresh"}`)
+		case r.Header.Get("Authorization") == "Bearer new-token":
+			_, _ = io.WriteString(w, `{"id":1,"username":"demo"}`)
+		default:
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, `{"detail":"expired"}`)
+		}
+	}))
+	defer server.Close()
+	app, out, stderr, credentials := testApp(t, server)
+	account := credential.Account("test", server.URL+"/api/v1/")
+	credentials.values[account] = credential.Tokens{AuthToken: "expired-token", RefreshToken: "old-refresh"}
+	credentials.file = "/home/demo/.config/taiga-cli/credentials.json"
+	keyring := ""
+	credentials.fileAfterSet = &keyring
+	if code := app.Execute(context.Background(), []string{"--json", "auth", "status"}); code != ExitSuccess {
+		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(out.String(), `"credential_source":"keyring"`) || strings.Contains(out.String(), "credential_file") {
+		t.Fatalf("stdout = %s", out.String())
 	}
 }

@@ -25,9 +25,14 @@ import (
 
 type fakeCredentials struct {
 	values map[string]credential.Tokens
-	// file, when set, is where Set reports saving, as a store without a
-	// keyring would.
+	// file, when set, is where Get and Set report the credential, as a store
+	// without a keyring would.
 	file string
+	// fileAfterSet, when set, replaces file on every Set, as a keyring that
+	// became available would take the credential over.
+	fileAfterSet *string
+	// events records locking and every change, in order.
+	events []string
 }
 
 func (f *fakeCredentials) Get(account string) (credential.Tokens, credential.Location, error) {
@@ -40,13 +45,21 @@ func (f *fakeCredentials) Get(account string) (credential.Tokens, credential.Loc
 
 func (f *fakeCredentials) Set(account string, tokens credential.Tokens) (credential.Location, error) {
 	f.values[account] = tokens
+	f.events = append(f.events, "set")
+	if f.fileAfterSet != nil {
+		f.file = *f.fileAfterSet
+	}
 	return credential.Location{File: f.file}, nil
 }
 
-func (f *fakeCredentials) Lock(context.Context) (func(), error) { return func() {}, nil }
+func (f *fakeCredentials) Lock(context.Context) (func(), error) {
+	f.events = append(f.events, "lock")
+	return func() { f.events = append(f.events, "unlock") }, nil
+}
 
 func (f *fakeCredentials) Delete(account string) error {
 	delete(f.values, account)
+	f.events = append(f.events, "delete")
 	return nil
 }
 

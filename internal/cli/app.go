@@ -42,6 +42,9 @@ type App struct {
 	StdinTTY func() bool
 
 	global globalOptions
+	// refreshedLocation is where the last refresh in this command saved the
+	// credential, and nil when there was none.
+	refreshedLocation *credential.Location
 }
 
 type globalOptions struct {
@@ -314,7 +317,10 @@ func (a *App) refreshOptions(settings Settings) ([]taiga.ClientOption, error) {
 	}
 	account := credential.Account(settings.Profile, settings.APIURL)
 	save := func(authToken, refreshToken string) error {
-		_, err := store.Set(account, credential.Tokens{AuthToken: authToken, RefreshToken: refreshToken})
+		location, err := store.Set(account, credential.Tokens{AuthToken: authToken, RefreshToken: refreshToken})
+		if err == nil {
+			a.refreshedLocation = &location
+		}
 		return err
 	}
 	lock := func(ctx context.Context) (string, string, func(), error) {

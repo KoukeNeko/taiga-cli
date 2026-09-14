@@ -16,7 +16,7 @@ Release workflow 會把對應版本的段落與英文版 [CHANGELOG.md](CHANGELO
 ### 修正
 
 - `taiga auth login` 現在可以在沒有 keyring 服務的 Linux 上使用，例如伺服器、容器或沒有桌面環境的 SSH 連線。在這類環境中，過去每個指令都會停在 `read OS keyring: The name org.freedesktop.secrets was not provided by any .service files`，連 `auth status` 和原本能解決問題的登入都一樣。現在只要 session bus 確認沒有任何程式提供 Secret Service，憑證就會改存到設定目錄下的 `credentials.json`（只有使用者本人能讀取），登入時會列出檔案位置；`--json` 輸出以 `credential_file` 欄位提供。keyring 存在但被鎖住或拒絕存取時仍會回報錯誤，不會被繞過；已設定 session bus 卻連不上時（例如位址已失效，或透過 `sudo` 繼承了其他使用者的 bus）也一樣。存在檔案裡的憑證在之後安裝 keyring 後仍可繼續使用，且優先於 keyring 中可能殘留的舊副本，下一次寫入時就會移進 keyring。其他使用者可讀取的憑證檔會被拒絕使用，並提示修正用的 `chmod` 指令。
-- 多個指令同時發現 access token 過期時，不會再互相讓對方失效。Taiga 的 refresh token 用過一次就作廢，所以過去同時刷新同一組 token 時只有第一個會成功，其餘都以 `Given token not valid for any token type` 失敗。現在刷新前會先取得憑證旁的鎖、重新讀取已儲存的 token，若其他指令剛刷新過就直接沿用新的那組，不再送出已作廢的 refresh token。實測 6 個同時執行的 `auth status` 遇到過期 token 時全部成功、只刷新一次；修正前 6 個中有 5 個失敗。
+- 多個指令同時發現 access token 過期時，不會再互相讓對方失效。Taiga 的 refresh token 用過一次就作廢，所以過去同時刷新同一組 token 時只有第一個會成功，其餘都以 `Given token not valid for any token type` 失敗。現在刷新前會先取得憑證旁的鎖、重新讀取已儲存的 token，若其他指令剛刷新過就直接沿用新的那組，不再送出已作廢的 refresh token。`auth login` 與 `auth logout` 也會取得同一個鎖，因此正在進行的刷新不會覆蓋剛登入的憑證，也不會讓剛登出的憑證又被寫回來。實測 6 個同時執行的 `auth status` 遇到過期 token 時全部成功、只刷新一次；修正前 6 個中有 5 個失敗。
 - 在沒有桌面環境的連線中無法使用 OS keyring 時（例如透過 SSH 使用被鎖住的 GNOME Keyring），現在會回報 `credential_store_unavailable`，並說明解法：用其他方式解鎖 keyring，或改用 `--credential-store=file`。過去只會顯示「unexpected failure」和函式庫的 `failed to unlock correct collection`。
 
 ## [0.6.0] - 2026-09-09

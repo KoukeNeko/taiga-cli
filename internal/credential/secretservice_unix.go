@@ -62,7 +62,11 @@ func headless() bool {
 }
 
 // sessionBusKnown reports whether there is a session bus address to use,
-// looking where godbus looks before it falls back to launching a bus.
+// looking where godbus looks before it falls back to launching a bus. A bus
+// that the failed keyring call launched itself counts too: godbus exports the
+// launched bus's address to DBUS_SESSION_BUS_ADDRESS, so the probe asks that
+// same bus, and a keyring activated there is found rather than taken for
+// absent.
 func sessionBusKnown() bool {
 	if address := os.Getenv("DBUS_SESSION_BUS_ADDRESS"); address != "" && address != "autolaunch:" {
 		return true

@@ -107,7 +107,14 @@ func (a *App) login(ctx context.Context, options loginOptions) error {
 	if err != nil {
 		return err
 	}
+	// Under the refresh lock, so that a refresh another command has in hand
+	// cannot overwrite this login with the pair it is replacing.
+	unlock, err := store.Lock(ctx)
+	if err != nil {
+		return err
+	}
 	saved, err := store.Set(credential.Account(settings.Profile, target.apiURL), tokens)
+	unlock()
 	if err != nil {
 		return err
 	}
@@ -123,7 +130,13 @@ func (a *App) login(ctx context.Context, options loginOptions) error {
 		if saved.File != "" {
 			// The README promises the keyring, so a credential that went to a
 			// file instead says where, rather than leaving that to be found.
-			_, _ = fmt.Fprintf(a.Err, "No OS keyring is available, so the credential was saved to %s, which only your user can read.\n", saved.File)
+			// Only auto mode went looking for a keyring, so only it may say
+			// that there was none.
+			if mode, _ := a.credentialMode(); mode == credential.ModeFile {
+				_, _ = fmt.Fprintf(a.Err, "The credential was saved to %s, as --credential-store=file asks, and only your user can read it.\n", saved.File)
+			} else {
+				_, _ = fmt.Fprintf(a.Err, "No OS keyring is available, so the credential was saved to %s, which only your user can read.\n", saved.File)
+			}
 		}
 		if tokens.RefreshToken == "" {
 			// Saying the login will expire without saying what to do about it
@@ -382,7 +395,16 @@ func (a *App) authLogoutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := store.Delete(credential.Account(settings.Profile, settings.APIURL)); err != nil {
+			// Under the refresh lock: a refresh already holding it would
+			// otherwise store its new pair after this deletion and undo the
+			// logout, while one that waits finds the credential gone.
+			unlock, err := store.Lock(cmd.Context())
+			if err != nil {
+				return err
+			}
+			err = store.Delete(credential.Account(settings.Profile, settings.APIURL))
+			unlock()
+			if err != nil {
 				return err
 			}
 			result := map[string]any{"profile": settings.Profile, "logged_out": true}
@@ -409,6 +431,15 @@ func (a *App) authStatusCommand() *cobra.Command {
 			user, err := client.Me(cmd.Context())
 			if err != nil {
 				return err
+			}
+			// A refresh made to answer Me may have moved the credential, as
+			// from the file into a keyring installed since, so the location
+			// is the one that refresh reported rather than the one read first.
+			if location := a.refreshedLocation; location != nil {
+				settings.CredentialSource, settings.CredentialFile = credentialFromKeyring, location.File
+				if location.File != "" {
+					settings.CredentialSource = credentialFromFile
+				}
 			}
 			result := map[string]any{"profile": settings.Profile, "api_url": settings.APIURL, "project": settings.Project, "user": user, "authenticated": true, "credential_source": settings.CredentialSource}
 			if settings.CredentialFile != "" {
