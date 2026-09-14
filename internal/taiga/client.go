@@ -74,6 +74,7 @@ type Client struct {
 	token        string
 	refreshToken string
 	onRefresh    func(string, string) error
+	refreshLock  RefreshLock
 	verbose      io.Writer
 	maxRetries   int
 	sleep        func(context.Context, time.Duration) error
@@ -97,6 +98,20 @@ func WithRefreshToken(refreshToken string, onRefresh func(string, string) error)
 		c.refreshToken = strings.TrimSpace(refreshToken)
 		c.onRefresh = onRefresh
 	}
+}
+
+// RefreshLock serializes a refresh with every other process that shares the
+// stored credential. It returns the pair stored at the moment the lock is
+// taken, which another process may have refreshed since this client read it,
+// and the function that releases the lock.
+type RefreshLock func(ctx context.Context) (authToken, refreshToken string, unlock func(), err error)
+
+// WithRefreshLock makes refreshes take lock first. Taiga retires a refresh
+// token once it has been used, so two commands refreshing the same pair at
+// once would leave one of them, and the stored credential, holding a dead
+// token.
+func WithRefreshLock(lock RefreshLock) ClientOption {
+	return func(c *Client) { c.refreshLock = lock }
 }
 
 func WithVerbose(writer io.Writer) ClientOption {
@@ -393,6 +408,27 @@ func refreshRefused(err error) bool {
 // classified the way doJSON classifies them, because the caller reports them
 // in place of the request that needed the refresh.
 func (c *Client) refresh(ctx context.Context) error {
+	if c.refreshLock != nil {
+		storedToken, storedRefresh, unlock, err := c.refreshLock(ctx)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+		// A stored token other than the one just refused means another
+		// process refreshed while this one waited. Its pair is the live one,
+		// and spending this process's copy of the old refresh token would
+		// only have Taiga refuse it.
+		if storedToken != "" && storedToken != c.token {
+			c.token = storedToken
+			if storedRefresh != "" {
+				c.refreshToken = storedRefresh
+			}
+			return nil
+		}
+		if storedRefresh != "" {
+			c.refreshToken = storedRefresh
+		}
+	}
 	attemptCtx, cancel := context.WithTimeout(ctx, c.requestTimeout)
 	defer cancel()
 	endpoint := c.baseURL.ResolveReference(&url.URL{Path: "auth/refresh"})

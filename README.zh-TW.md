@@ -173,6 +173,21 @@ taiga project use example-project --local
    taiga auth login
    ```
 
+   沒有桌面環境的 Linux 伺服器、容器或 SSH 連線通常沒有 keyring 服務，這時 token 會改存到
+   `~/.config/taiga-cli/credentials.json`（只有你的使用者能讀取），登入時也會提示。keyring 存在但被鎖住時會
+   直接回報錯誤，不會繞過 keyring 改存檔案。`taiga auth status` 每次都會顯示憑證存放在哪裡。
+
+   也可以用 `--credential-store`（或 `TAIGA_CREDENTIAL_STORE`）指定存放方式，不交給 `auto` 自動判斷：
+
+   | 值 | 行為 |
+   | --- | --- |
+   | `auto` | 使用 OS keyring；只有確定沒有 keyring 服務時才改存檔案（預設） |
+   | `keyring` | 只用 OS keyring；無法使用時直接回報錯誤，不寫檔案 |
+   | `file` | 只用檔案，完全不接觸 keyring，適合伺服器 |
+   | `none` | 不儲存任何憑證；請以 `TAIGA_TOKEN` 傳入 token |
+
+   這個檔案沒有加密，只靠檔案權限保護，家目錄的備份或快照也會包含它。
+
    要跳過第一個問題，用 `--url` 貼上 Taiga 網頁應用裡任何一頁的網址，例如專案或 backlog 頁面；填 API 的位址
    也可以，而且只會接觸你輸入的那個站台。官方託管的 Taiga 在 `https://tree.taiga.io/`；`community.taiga.io`
    是論壇，帳號系統不同，貼了它的網址時會改問你要不要用託管版。
@@ -255,7 +270,7 @@ project = "example-project"
 
 ```text
 command flag
-→ TAIGA_PROFILE / TAIGA_API_URL / TAIGA_PROJECT / TAIGA_TOKEN
+→ TAIGA_PROFILE / TAIGA_API_URL / TAIGA_PROJECT / TAIGA_TOKEN / TAIGA_CREDENTIAL_STORE
 → Git-local taiga.profile / taiga.project
 → current profile
 → safe defaults

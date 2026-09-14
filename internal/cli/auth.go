@@ -73,6 +73,11 @@ func (a *App) login(ctx context.Context, options loginOptions) error {
 	if options.SiteURL != "" && a.global.APIURL != "" {
 		return usageError("--url and --api-url are mutually exclusive")
 	}
+	// Refused before anything is asked or sent, rather than after someone
+	// has typed a password for a login that could not be kept.
+	if mode, err := a.credentialMode(); err == nil && mode == credential.ModeNone {
+		return validationError("credential_store_disabled", "--credential-store=none keeps no credential, so there is nothing to log in to; pass the token in TAIGA_TOKEN instead, or choose another --credential-store")
+	}
 	settings, cfg, err := a.resolveSettings(ctx)
 	if err != nil {
 		return err
@@ -98,15 +103,41 @@ func (a *App) login(ctx context.Context, options loginOptions) error {
 	if err := a.Config.Save(cfg); err != nil {
 		return err
 	}
-	if err := a.Credentials.Set(credential.Account(settings.Profile, target.apiURL), tokens); err != nil {
+	store, err := a.credentials()
+	if err != nil {
+		return err
+	}
+	// Under the refresh lock, so that a refresh another command has in hand
+	// cannot overwrite this login with the pair it is replacing.
+	unlock, err := store.Lock(ctx)
+	if err != nil {
+		return err
+	}
+	saved, err := store.Set(credential.Account(settings.Profile, target.apiURL), tokens)
+	unlock()
+	if err != nil {
 		return err
 	}
 	result := map[string]any{"profile": settings.Profile, "api_url": target.apiURL, "user": user, "refresh_token_stored": tokens.RefreshToken != ""}
+	if saved.File != "" {
+		result["credential_file"] = saved.File
+	}
 	if a.global.JSON {
 		return a.renderer().Data(result)
 	}
 	if !a.global.Quiet {
 		_, _ = fmt.Fprintf(a.Out, "Logged in to %s as %s (profile %s)\n", target.apiURL, user.Username, settings.Profile)
+		if saved.File != "" {
+			// The README promises the keyring, so a credential that went to a
+			// file instead says where, rather than leaving that to be found.
+			// Only auto mode went looking for a keyring, so only it may say
+			// that there was none.
+			if mode, _ := a.credentialMode(); mode == credential.ModeFile {
+				_, _ = fmt.Fprintf(a.Err, "The credential was saved to %s, as --credential-store=file asks, and only your user can read it.\n", saved.File)
+			} else {
+				_, _ = fmt.Fprintf(a.Err, "No OS keyring is available, so the credential was saved to %s, which only your user can read.\n", saved.File)
+			}
+		}
 		if tokens.RefreshToken == "" {
 			// Saying the login will expire without saying what to do about it
 			// leaves the person where the message found them. The way out is
@@ -360,7 +391,20 @@ func (a *App) authLogoutCommand() *cobra.Command {
 			if settings.APIURL == "" {
 				return validationError("missing_api_url", "current profile has no API URL")
 			}
-			if err := a.Credentials.Delete(credential.Account(settings.Profile, settings.APIURL)); err != nil {
+			store, err := a.credentials()
+			if err != nil {
+				return err
+			}
+			// Under the refresh lock: a refresh already holding it would
+			// otherwise store its new pair after this deletion and undo the
+			// logout, while one that waits finds the credential gone.
+			unlock, err := store.Lock(cmd.Context())
+			if err != nil {
+				return err
+			}
+			err = store.Delete(credential.Account(settings.Profile, settings.APIURL))
+			unlock()
+			if err != nil {
 				return err
 			}
 			result := map[string]any{"profile": settings.Profile, "logged_out": true}
@@ -388,13 +432,40 @@ func (a *App) authStatusCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result := map[string]any{"profile": settings.Profile, "api_url": settings.APIURL, "project": settings.Project, "user": user, "authenticated": true}
+			// A refresh made to answer Me may have moved the credential, as
+			// from the file into a keyring installed since, so the location
+			// is the one that refresh reported rather than the one read first.
+			if location := a.refreshedLocation; location != nil {
+				settings.CredentialSource, settings.CredentialFile = credentialFromKeyring, location.File
+				if location.File != "" {
+					settings.CredentialSource = credentialFromFile
+				}
+			}
+			result := map[string]any{"profile": settings.Profile, "api_url": settings.APIURL, "project": settings.Project, "user": user, "authenticated": true, "credential_source": settings.CredentialSource}
+			if settings.CredentialFile != "" {
+				result["credential_file"] = settings.CredentialFile
+			}
 			if a.global.JSON {
 				return a.renderer().Data(result)
 			}
 			_, _ = fmt.Fprintf(a.Out, "Authenticated to %s as %s (profile %s)\n", settings.APIURL, user.Username, settings.Profile)
+			// Where the credential lives is said every time, not only at
+			// login, so that a token that went to a file does not stay
+			// unnoticed there.
+			_, _ = fmt.Fprintf(a.Out, "Credential: %s\n", describeCredentialSource(settings))
 			return nil
 		},
+	}
+}
+
+func describeCredentialSource(settings Settings) string {
+	switch settings.CredentialSource {
+	case credentialFromEnvironment:
+		return "TAIGA_TOKEN environment variable (not stored)"
+	case credentialFromFile:
+		return settings.CredentialFile + " (plain text, readable only by your user)"
+	default:
+		return "OS keyring"
 	}
 }
 

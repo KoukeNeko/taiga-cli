@@ -767,3 +767,108 @@ func TestRefreshFailuresKeepTheirOwnMeaning(t *testing.T) {
 		})
 	}
 }
+
+// Two commands can find the same token expired at once. The one that waits
+// for the lock finds the other's refreshed pair stored, and uses it rather than
+// spend the old refresh token, which Taiga has already retired.
+func TestRefreshUsesAPairAnotherProcessStoredWhileWaiting(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/users/me":
+			if r.Header.Get("Authorization") == "Bearer stored-by-other" {
+				_, _ = io.WriteString(w, `{"id":1,"username":"demo"}`)
+				return
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, `{"detail":"expired"}`)
+		case "/api/v1/auth/refresh":
+			t.Fatalf("refreshed with a refresh token another process already spent")
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	unlocked := false
+	client, _ := NewClient(server.URL+"/api/v1/",
+		WithToken("old-token"),
+		WithRefreshToken("old-refresh", func(string, string) error {
+			t.Fatalf("saved a pair when none was issued")
+			return nil
+		}),
+		WithRefreshLock(func(context.Context) (string, string, func(), error) {
+			return "stored-by-other", "other-refresh", func() { unlocked = true }, nil
+		}),
+	)
+	user, err := client.Me(context.Background())
+	if err != nil || user.Username != "demo" {
+		t.Fatalf("Me() = %#v, %v", user, err)
+	}
+	if !unlocked {
+		t.Fatal("the refresh lock was not released")
+	}
+}
+
+// When the stored pair is still the refused one, the refresh happens, and the
+// rotated pair is saved before the lock is released, so the next process to
+// take it reads the new pair rather than the retired one.
+func TestRefreshSavesTheRotatedPairWhileHoldingTheLock(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/users/me":
+			if r.Header.Get("Authorization") == "Bearer new-token" {
+				_, _ = io.WriteString(w, `{"id":1,"username":"demo"}`)
+				return
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, `{"detail":"expired"}`)
+		case "/api/v1/auth/refresh":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["refresh"] != "stored-refresh" {
+				t.Fatalf("refresh sent %q, want the stored refresh token", body["refresh"])
+			}
+			_, _ = io.WriteString(w, `{"auth_token":"new-token","refresh":"new-refresh"}`)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	var events []string
+	client, _ := NewClient(server.URL+"/api/v1/",
+		WithToken("old-token"),
+		WithRefreshToken("old-refresh", func(authToken, refreshToken string) error {
+			events = append(events, "save "+authToken+" "+refreshToken)
+			return nil
+		}),
+		WithRefreshLock(func(context.Context) (string, string, func(), error) {
+			events = append(events, "lock")
+			return "old-token", "stored-refresh", func() { events = append(events, "unlock") }, nil
+		}),
+	)
+	if _, err := client.Me(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"lock", "save new-token new-refresh", "unlock"}; strings.Join(events, ",") != strings.Join(want, ",") {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRefreshReportsALockThatCannotBeTaken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/auth/refresh" {
+			t.Fatalf("refreshed without the lock")
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"detail":"expired"}`)
+	}))
+	defer server.Close()
+	lockErr := errors.New("lock unavailable")
+	client, _ := NewClient(server.URL+"/api/v1/",
+		WithToken("old-token"),
+		WithRefreshToken("old-refresh", func(string, string) error { return nil }),
+		WithRefreshLock(func(context.Context) (string, string, func(), error) { return "", "", nil, lockErr }),
+	)
+	if _, err := client.Me(context.Background()); !errors.Is(err, lockErr) {
+		t.Fatalf("Me() = %v, want the lock error", err)
+	}
+}
