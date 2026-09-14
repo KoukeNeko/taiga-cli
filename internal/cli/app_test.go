@@ -25,6 +25,9 @@ import (
 
 type fakeCredentials struct {
 	values map[string]credential.Tokens
+	// file, when set, is where Set reports saving, as a store without a
+	// keyring would.
+	file string
 }
 
 func (f *fakeCredentials) Get(account string) (credential.Tokens, error) {
@@ -35,9 +38,9 @@ func (f *fakeCredentials) Get(account string) (credential.Tokens, error) {
 	return value, nil
 }
 
-func (f *fakeCredentials) Set(account string, tokens credential.Tokens) error {
+func (f *fakeCredentials) Set(account string, tokens credential.Tokens) (credential.Saved, error) {
 	f.values[account] = tokens
-	return nil
+	return credential.Saved{File: f.file}, nil
 }
 
 func (f *fakeCredentials) Delete(account string) error {

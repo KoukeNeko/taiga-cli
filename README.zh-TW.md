@@ -173,6 +173,10 @@ taiga project use example-project --local
    taiga auth login
    ```
 
+   沒有桌面環境的 Linux 伺服器、容器或 SSH 連線通常沒有 keyring 服務，這時 token 會改存到
+   `~/.config/taiga-cli/credentials.json`（只有你的使用者能讀取），登入時也會提示。keyring 存在但被鎖住時會
+   直接回報錯誤，不會繞過 keyring 改存檔案。
+
    要跳過第一個問題，用 `--url` 貼上 Taiga 網頁應用裡任何一頁的網址，例如專案或 backlog 頁面；填 API 的位址
    也可以，而且只會接觸你輸入的那個站台。官方託管的 Taiga 在 `https://tree.taiga.io/`；`community.taiga.io`
    是論壇，帳號系統不同，貼了它的網址時會改問你要不要用託管版。

@@ -53,7 +53,8 @@ func (a *App) doctorCommand() *cobra.Command {
 			if token != "" && settings.RefreshToken != "" && a.Credentials != nil {
 				account := credential.Account(settings.Profile, settings.APIURL)
 				options = append(options, taiga.WithRefreshToken(settings.RefreshToken, func(authToken, refreshToken string) error {
-					return a.Credentials.Set(account, credential.Tokens{AuthToken: authToken, RefreshToken: refreshToken})
+					_, err := a.Credentials.Set(account, credential.Tokens{AuthToken: authToken, RefreshToken: refreshToken})
+					return err
 				}))
 			}
 			if a.global.Verbose {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -78,7 +79,7 @@ func New() (*App, error) {
 		HTTPClient:      &http.Client{},
 		Config:          config.NewStore(path),
 		GitLocal:        config.NewGitLocal(cwd),
-		Credentials:     credential.NewKeyringStore(),
+		Credentials:     credential.NewKeyringStore(filepath.Join(filepath.Dir(path), credential.FileName)),
 		CompletionCache: completioncache.NewStore(completioncache.DefaultPath(path)),
 		Getenv:          os.Getenv,
 		Cwd:             cwd,
@@ -253,7 +254,8 @@ func (a *App) client(ctx context.Context, requireToken bool) (*taiga.Client, Set
 	if settings.RefreshToken != "" && a.Credentials != nil {
 		account := credential.Account(settings.Profile, settings.APIURL)
 		options = append(options, taiga.WithRefreshToken(settings.RefreshToken, func(authToken, refreshToken string) error {
-			return a.Credentials.Set(account, credential.Tokens{AuthToken: authToken, RefreshToken: refreshToken})
+			_, err := a.Credentials.Set(account, credential.Tokens{AuthToken: authToken, RefreshToken: refreshToken})
+			return err
 		}))
 	}
 	if a.global.Verbose {

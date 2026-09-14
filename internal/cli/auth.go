@@ -98,15 +98,24 @@ func (a *App) login(ctx context.Context, options loginOptions) error {
 	if err := a.Config.Save(cfg); err != nil {
 		return err
 	}
-	if err := a.Credentials.Set(credential.Account(settings.Profile, target.apiURL), tokens); err != nil {
+	saved, err := a.Credentials.Set(credential.Account(settings.Profile, target.apiURL), tokens)
+	if err != nil {
 		return err
 	}
 	result := map[string]any{"profile": settings.Profile, "api_url": target.apiURL, "user": user, "refresh_token_stored": tokens.RefreshToken != ""}
+	if saved.File != "" {
+		result["credential_file"] = saved.File
+	}
 	if a.global.JSON {
 		return a.renderer().Data(result)
 	}
 	if !a.global.Quiet {
 		_, _ = fmt.Fprintf(a.Out, "Logged in to %s as %s (profile %s)\n", target.apiURL, user.Username, settings.Profile)
+		if saved.File != "" {
+			// The README promises the keyring, so a credential that went to a
+			// file instead says where, rather than leaving that to be found.
+			_, _ = fmt.Fprintf(a.Err, "No OS keyring is available, so the credential was saved to %s, which only your user can read.\n", saved.File)
+		}
 		if tokens.RefreshToken == "" {
 			// Saying the login will expire without saying what to do about it
 			// leaves the person where the message found them. The way out is

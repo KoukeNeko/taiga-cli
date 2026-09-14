@@ -75,7 +75,8 @@ config_directory() {
 }
 
 # Credentials live in the OS keyring rather than a file, so they need the
-# platform's own tool. Report what could not be reached instead of implying a
+# platform's own tool. The credentials file kept where there is no keyring sits
+# in the configuration directory and goes with it. Report what could not be reached instead of implying a
 # clean sweep.
 remove_credentials() {
     if [ "$dry_run" = yes ]; then

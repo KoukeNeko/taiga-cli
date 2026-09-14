@@ -8,6 +8,10 @@ The release workflow publishes the section matching the tag as the GitHub Releas
 
 ## [Unreleased]
 
+### Fixed
+
+- `taiga auth login` works on a Linux machine with no keyring service, such as a server, a container or an SSH session without a desktop. Every command there used to stop at `read OS keyring: The name org.freedesktop.secrets was not provided by any .service files`, including `auth status` and the login that would have fixed it. When the session bus confirms that nothing provides the Secret Service, the credential goes to `credentials.json` in the configuration directory instead, readable only by the user, and the login names the file; `--json` output carries it as `credential_file`. A keyring that exists but is locked or declines is still reported, never bypassed, and so is a session bus that is configured but cannot be reached, such as a stale address or one inherited through `sudo`. A credential saved to the file keeps working after a keyring is installed, takes precedence over any older copy the keyring still holds, and moves into the keyring the next time it is written. A credentials file that other users can read is refused, with the `chmod` that fixes it, rather than silently used.
+
 ## [0.6.0] - 2026-09-09
 
 ### Renamed back to Taiga CLI

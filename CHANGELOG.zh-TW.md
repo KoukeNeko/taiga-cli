@@ -8,6 +8,10 @@ Release workflow 會把對應版本的段落與英文版 [CHANGELOG.md](CHANGELO
 
 ## [未發布]
 
+### 修正
+
+- `taiga auth login` 現在可以在沒有 keyring 服務的 Linux 上使用，例如伺服器、容器或沒有桌面環境的 SSH 連線。在這類環境中，過去每個指令都會停在 `read OS keyring: The name org.freedesktop.secrets was not provided by any .service files`，連 `auth status` 和原本能解決問題的登入都一樣。現在只要 session bus 確認沒有任何程式提供 Secret Service，憑證就會改存到設定目錄下的 `credentials.json`（只有使用者本人能讀取），登入時會列出檔案位置；`--json` 輸出以 `credential_file` 欄位提供。keyring 存在但被鎖住或拒絕存取時仍會回報錯誤，不會被繞過；已設定 session bus 卻連不上時（例如位址已失效，或透過 `sudo` 繼承了其他使用者的 bus）也一樣。存在檔案裡的憑證在之後安裝 keyring 後仍可繼續使用，且優先於 keyring 中可能殘留的舊副本，下一次寫入時就會移進 keyring。其他使用者可讀取的憑證檔會被拒絕使用，並提示修正用的 `chmod` 指令。
+
 ## [0.6.0] - 2026-09-09
 
 ### 改回 Taiga CLI

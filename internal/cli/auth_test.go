@@ -331,3 +331,33 @@ func TestTokenLoginSaysHowToGetARefreshToken(t *testing.T) {
 		})
 	}
 }
+
+// Where there is no OS keyring the credential lands in a file, and the login
+// says which, since the README tells people to expect the keyring.
+func TestLoginSaysWhenTheCredentialWentToAFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"id":1,"username":"demo"}`)
+	}))
+	defer server.Close()
+	for _, asJSON := range []bool{false, true} {
+		app, out, stderr, credentials := testApp(t, server)
+		credentials.file = "/home/demo/.config/taiga-cli/credentials.json"
+		app.In = strings.NewReader("pasted-token\n")
+		args := []string{"--api-url", server.URL + "/api/v1/", "auth", "login", "--with-token"}
+		if asJSON {
+			args = append([]string{"--json"}, args...)
+		}
+		if code := app.Execute(context.Background(), args); code != ExitSuccess {
+			t.Fatalf("asJSON=%v: exit=%d stderr=%s", asJSON, code, stderr.String())
+		}
+		if asJSON {
+			if !strings.Contains(out.String(), `"credential_file":"/home/demo/.config/taiga-cli/credentials.json"`) {
+				t.Errorf("json output does not name the file: %s", out.String())
+			}
+			continue
+		}
+		if !strings.Contains(stderr.String(), "No OS keyring is available, so the credential was saved to /home/demo/.config/taiga-cli/credentials.json") {
+			t.Errorf("stderr = %q", stderr.String())
+		}
+	}
+}
