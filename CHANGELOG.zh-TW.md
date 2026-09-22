@@ -8,6 +8,10 @@ Release workflow 會把對應版本的段落與英文版 [CHANGELOG.md](CHANGELO
 
 ## [未發布]
 
+### 新增
+
+- `story create`、`story edit`、`issue create` 與 `issue edit` 新增 `--tags`，用來設定工作項目的標籤。可重複指定該旗標，或以逗號分隔多個值；每個值前後的空白會自動去除。在 `edit` 中會直接取代整組標籤，傳入空字串則會清空。Taiga 會自動將標籤轉為小寫，因此 `Mixed Case` 會存成 `mixed case`。`story list`、`story view`、`issue list` 與 `issue view` 現在也會顯示 `TAGS` 欄位／`Tags` 列，`--json` 一律會提供 `tags` 陣列，即使沒有任何標籤也一樣。
+
 ## [0.7.0] - 2026-09-14
 
 Taiga CLI 現在可以在沒有桌面環境的 Linux 伺服器、容器或 SSH 連線上使用；過去在這些環境中，每個指令都會卡在 keyring 錯誤。只有在確定沒有 keyring 服務時，憑證才會改存到檔案，也可以用 `--credential-store` 自行指定存放方式。多個指令同時刷新過期的 token 時，不會再讓彼此的登入失效，`auth status` 也會顯示目前使用的憑證存放在哪裡。

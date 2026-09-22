@@ -12,21 +12,22 @@ import (
 )
 
 type issueView struct {
-	ID           int64  `json:"id"`
-	Ref          int    `json:"ref"`
-	Project      string `json:"project"`
-	Subject      string `json:"subject"`
-	Description  string `json:"description,omitempty"`
-	Version      int    `json:"version"`
-	Status       string `json:"status"`
-	Priority     string `json:"priority"`
-	Severity     string `json:"severity"`
-	Type         string `json:"type"`
-	Assignee     string `json:"assignee,omitempty"`
-	IsClosed     bool   `json:"is_closed"`
-	IsWatcher    bool   `json:"is_watcher"`
-	CreatedDate  string `json:"created_date,omitempty"`
-	ModifiedDate string `json:"modified_date,omitempty"`
+	ID           int64    `json:"id"`
+	Ref          int      `json:"ref"`
+	Project      string   `json:"project"`
+	Subject      string   `json:"subject"`
+	Description  string   `json:"description,omitempty"`
+	Version      int      `json:"version"`
+	Status       string   `json:"status"`
+	Priority     string   `json:"priority"`
+	Severity     string   `json:"severity"`
+	Type         string   `json:"type"`
+	Assignee     string   `json:"assignee,omitempty"`
+	IsClosed     bool     `json:"is_closed"`
+	IsWatcher    bool     `json:"is_watcher"`
+	Tags         []string `json:"tags"`
+	CreatedDate  string   `json:"created_date,omitempty"`
+	ModifiedDate string   `json:"modified_date,omitempty"`
 }
 
 type issueTarget struct {
@@ -81,9 +82,13 @@ func (a *App) issueListCommand() *cobra.Command {
 				return a.renderer().List(views, pagination)
 			}
 			writer := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
-			_, _ = fmt.Fprintln(writer, "REF\tSUBJECT\tSTATUS\tASSIGNEE\tVERSION")
+			_, _ = fmt.Fprintln(writer, "REF\tSUBJECT\tSTATUS\tASSIGNEE\tTAGS\tVERSION")
 			for _, issue := range views {
-				_, _ = fmt.Fprintf(writer, "#%d\t%s\t%s\t%s\t%d\n", issue.Ref, issue.Subject, issue.Status, issue.Assignee, issue.Version)
+				tags := "-"
+				if len(issue.Tags) > 0 {
+					tags = strings.Join(issue.Tags, ",")
+				}
+				_, _ = fmt.Fprintf(writer, "#%d\t%s\t%s\t%s\t%s\t%d\n", issue.Ref, issue.Subject, issue.Status, issue.Assignee, tags, issue.Version)
 			}
 			return a.flushTable(writer, len(views), pagination.Total)
 		},
@@ -107,7 +112,11 @@ func (a *App) issueViewCommand() *cobra.Command {
 			if a.global.JSON {
 				return a.renderer().Data(view)
 			}
-			_, _ = fmt.Fprintf(a.Out, "#%d  %s\nStatus:    %s\nType:      %s\nPriority:  %s\nSeverity:  %s\nAssignee:  %s\nVersion:   %d\n\n%s\n", view.Ref, view.Subject, view.Status, view.Type, view.Priority, view.Severity, view.Assignee, view.Version, view.Description)
+			tags := "-"
+			if len(view.Tags) > 0 {
+				tags = strings.Join(view.Tags, ", ")
+			}
+			_, _ = fmt.Fprintf(a.Out, "#%d  %s\nStatus:    %s\nType:      %s\nPriority:  %s\nSeverity:  %s\nAssignee:  %s\nTags:      %s\nVersion:   %d\n\n%s\n", view.Ref, view.Subject, view.Status, view.Type, view.Priority, view.Severity, view.Assignee, tags, view.Version, view.Description)
 			return nil
 		},
 	}
@@ -117,6 +126,7 @@ func (a *App) issueViewCommand() *cobra.Command {
 
 func (a *App) issueCreateCommand() *cobra.Command {
 	var subject, description, status, priority, severity, issueType, assignee string
+	var tags []string
 	var dryRun bool
 	command := &cobra.Command{
 		Use:   "create",
@@ -169,8 +179,12 @@ func (a *App) issueCreateCommand() *cobra.Command {
 				}
 				request.AssignedTo = &userID
 			}
+			tags = normalizeTags(tags)
+			if len(tags) > 0 {
+				request.Tags = tags
+			}
 			if dryRun {
-				return a.renderDryRun("create", project.Slug, map[string]any{"subject": subject, "description": description, "status": status, "priority": priority, "severity": severity, "type": issueType, "assignee": assignee})
+				return a.renderDryRun("create", project.Slug, map[string]any{"subject": subject, "description": description, "status": status, "priority": priority, "severity": severity, "type": issueType, "assignee": assignee, "tags": tags})
 			}
 			issue, err := client.CreateIssue(cmd.Context(), request)
 			if err != nil {
@@ -187,6 +201,7 @@ func (a *App) issueCreateCommand() *cobra.Command {
 	flags.StringVar(&severity, "severity", "", "issue severity name")
 	flags.StringVar(&issueType, "type", "", "issue type name")
 	flags.StringVar(&assignee, "assignee", "", "assignee username or full name")
+	flags.StringSliceVar(&tags, "tags", nil, "tag name; repeat or comma-separate for multiple tags")
 	flags.BoolVar(&dryRun, "dry-run", false, "resolve and display the mutation without writing")
 	_ = command.RegisterFlagCompletionFunc("status", a.completeIssueStatuses)
 	_ = command.RegisterFlagCompletionFunc("priority", a.completeNamedMetadata("issue-priorities", func(ctx context.Context, client *taiga.Client, projectID int64) ([]taiga.NamedMetadata, error) {
@@ -204,6 +219,7 @@ func (a *App) issueCreateCommand() *cobra.Command {
 
 type editIssueOptions struct {
 	Subject, Description, Status, Priority, Severity, Type, Assignee string
+	Tags                                                             []string
 	BaseVersion                                                      int
 	DryRun                                                           bool
 }
@@ -219,7 +235,7 @@ func (a *App) issueEditCommand() *cobra.Command {
 				return usageError("--base-version cannot be negative")
 			}
 			changed := false
-			for _, name := range []string{"subject", "description", "status", "priority", "severity", "type", "assignee"} {
+			for _, name := range []string{"subject", "description", "status", "priority", "severity", "type", "assignee", "tags"} {
 				changed = changed || cmd.Flags().Changed(name)
 			}
 			if !changed {
@@ -280,8 +296,12 @@ func (a *App) issueEditCommand() *cobra.Command {
 				}
 				request.AssignedTo = &userID
 			}
+			if cmd.Flags().Changed("tags") {
+				options.Tags = normalizeTags(options.Tags)
+				request.Tags = &options.Tags
+			}
 			if options.DryRun {
-				return a.renderDryRun("edit", fmt.Sprintf("%s#%d", target.Project.Slug, target.Issue.Ref), map[string]any{"base_version": request.Version, "subject": request.Subject, "description": request.Description, "status": options.Status, "priority": options.Priority, "severity": options.Severity, "type": options.Type, "assignee": options.Assignee})
+				return a.renderDryRun("edit", fmt.Sprintf("%s#%d", target.Project.Slug, target.Issue.Ref), map[string]any{"base_version": request.Version, "subject": request.Subject, "description": request.Description, "status": options.Status, "priority": options.Priority, "severity": options.Severity, "type": options.Type, "assignee": options.Assignee, "tags": options.Tags})
 			}
 			updated, err := target.Client.UpdateIssue(cmd.Context(), target.Issue.ID, request)
 			if err != nil {
@@ -315,6 +335,7 @@ func addEditFlags(command *cobra.Command, options *editIssueOptions) {
 	flags.StringVar(&options.Severity, "severity", "", "severity name")
 	flags.StringVar(&options.Type, "type", "", "issue type name")
 	flags.StringVar(&options.Assignee, "assignee", "", "assignee username or full name")
+	flags.StringSliceVar(&options.Tags, "tags", nil, "replace all tags; repeat or comma-separate for multiple, pass an empty string to clear")
 	flags.IntVar(&options.BaseVersion, "base-version", 0, "explicit Taiga base version")
 	flags.BoolVar(&options.DryRun, "dry-run", false, "resolve and display the mutation without writing")
 }
@@ -442,7 +463,7 @@ func makeIssueView(issue taiga.Issue, projectSlug string) issueView {
 	if issue.AssignedToExtraInfo != nil {
 		assignee = firstNonEmpty(issue.AssignedToExtraInfo.Username, issue.AssignedToExtraInfo.FullName)
 	}
-	return issueView{ID: issue.ID, Ref: issue.Ref, Project: projectSlug, Subject: issue.Subject, Description: issue.Description, Version: issue.Version, Status: issue.StatusExtraInfo.Name, Priority: issue.PriorityExtraInfo.Name, Severity: issue.SeverityExtraInfo.Name, Type: issue.TypeExtraInfo.Name, Assignee: assignee, IsClosed: issue.IsClosed, IsWatcher: issue.IsWatcher, CreatedDate: issue.CreatedDate, ModifiedDate: issue.ModifiedDate}
+	return issueView{ID: issue.ID, Ref: issue.Ref, Project: projectSlug, Subject: issue.Subject, Description: issue.Description, Version: issue.Version, Status: issue.StatusExtraInfo.Name, Priority: issue.PriorityExtraInfo.Name, Severity: issue.SeverityExtraInfo.Name, Type: issue.TypeExtraInfo.Name, Assignee: assignee, IsClosed: issue.IsClosed, IsWatcher: issue.IsWatcher, Tags: tagNames(issue.Tags), CreatedDate: issue.CreatedDate, ModifiedDate: issue.ModifiedDate}
 }
 
 func (a *App) resolveIssueStatus(ctx context.Context, client *taiga.Client, projectID int64, name string, requireClosed bool) (taiga.IssueStatus, error) {

@@ -27,6 +27,7 @@ type storyView struct {
 	IsClosed      bool             `json:"is_closed"`
 	IsWatcher     bool             `json:"is_watcher"`
 	IsBlocked     bool             `json:"is_blocked"`
+	Tags          []string         `json:"tags"`
 	CreatedDate   string           `json:"created_date,omitempty"`
 	ModifiedDate  string           `json:"modified_date,omitempty"`
 }
@@ -92,13 +93,17 @@ func (a *App) storyListCommand() *cobra.Command {
 				return a.renderer().List(views, pagination)
 			}
 			writer := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
-			_, _ = fmt.Fprintln(writer, "REF\tSUBJECT\tSTATUS\tSPRINT\tPOINTS\tVERSION")
+			_, _ = fmt.Fprintln(writer, "REF\tSUBJECT\tSTATUS\tSPRINT\tPOINTS\tTAGS\tVERSION")
 			for _, story := range views {
 				points := "-"
 				if story.TotalPoints != nil {
 					points = fmt.Sprintf("%g", *story.TotalPoints)
 				}
-				_, _ = fmt.Fprintf(writer, "#%d\t%s\t%s\t%s\t%s\t%d\n", story.Ref, story.Subject, story.Status, story.Sprint, points, story.Version)
+				tags := "-"
+				if len(story.Tags) > 0 {
+					tags = strings.Join(story.Tags, ",")
+				}
+				_, _ = fmt.Fprintf(writer, "#%d\t%s\t%s\t%s\t%s\t%s\t%d\n", story.Ref, story.Subject, story.Status, story.Sprint, points, tags, story.Version)
 			}
 			return a.flushTable(writer, len(views), pagination.Total)
 		},
@@ -129,7 +134,11 @@ func (a *App) storyViewCommand() *cobra.Command {
 			if view.TotalPoints != nil {
 				points = fmt.Sprintf("%g", *view.TotalPoints)
 			}
-			_, _ = fmt.Fprintf(a.Out, "#%d  %s\nStatus:   %s\nSprint:   %s\nPoints:   %s\nVersion:  %d\n\n%s\n", view.Ref, view.Subject, view.Status, view.Sprint, points, view.Version, view.Description)
+			tags := "-"
+			if len(view.Tags) > 0 {
+				tags = strings.Join(view.Tags, ", ")
+			}
+			_, _ = fmt.Fprintf(a.Out, "#%d  %s\nStatus:   %s\nSprint:   %s\nPoints:   %s\nTags:     %s\nVersion:  %d\n\n%s\n", view.Ref, view.Subject, view.Status, view.Sprint, points, tags, view.Version, view.Description)
 			return nil
 		},
 	}
@@ -139,6 +148,7 @@ func (a *App) storyViewCommand() *cobra.Command {
 
 func (a *App) storyCreateCommand() *cobra.Command {
 	var subject, description, status, sprint string
+	var tags []string
 	var dryRun bool
 	command := &cobra.Command{
 		Use:   "create",
@@ -166,8 +176,12 @@ func (a *App) storyCreateCommand() *cobra.Command {
 				}
 				request.Milestone = &selected.ID
 			}
+			tags = normalizeTags(tags)
+			if len(tags) > 0 {
+				request.Tags = tags
+			}
 			if dryRun {
-				return a.renderDryRun("create story", project.Slug, map[string]any{"subject": subject, "description": description, "status": status, "sprint": sprint})
+				return a.renderDryRun("create story", project.Slug, map[string]any{"subject": subject, "description": description, "status": status, "sprint": sprint, "tags": tags})
 			}
 			story, err := client.CreateUserStory(cmd.Context(), request)
 			if err != nil {
@@ -180,6 +194,7 @@ func (a *App) storyCreateCommand() *cobra.Command {
 	command.Flags().StringVar(&description, "description", "", "story description")
 	command.Flags().StringVar(&status, "status", "", "story status name")
 	command.Flags().StringVar(&sprint, "sprint", "", "sprint name/slug, or backlog")
+	command.Flags().StringSliceVar(&tags, "tags", nil, "tag name; repeat or comma-separate for multiple tags")
 	command.Flags().BoolVar(&dryRun, "dry-run", false, "resolve and display the mutation without writing")
 	_ = command.RegisterFlagCompletionFunc("status", a.completeStoryStatuses)
 	_ = command.RegisterFlagCompletionFunc("sprint", a.completeSprints)
@@ -188,6 +203,7 @@ func (a *App) storyCreateCommand() *cobra.Command {
 
 type editStoryOptions struct {
 	Subject, Description, Status, Sprint string
+	Tags                                 []string
 	BaseVersion                          int
 	DryRun                               bool
 }
@@ -203,7 +219,7 @@ func (a *App) storyEditCommand() *cobra.Command {
 				return usageError("--base-version cannot be negative")
 			}
 			changed := false
-			for _, name := range []string{"subject", "description", "status", "sprint"} {
+			for _, name := range []string{"subject", "description", "status", "sprint", "tags"} {
 				changed = changed || cmd.Flags().Changed(name)
 			}
 			if !changed {
@@ -237,8 +253,12 @@ func (a *App) storyEditCommand() *cobra.Command {
 				}
 				request.Milestone = milestone
 			}
+			if cmd.Flags().Changed("tags") {
+				options.Tags = normalizeTags(options.Tags)
+				request.Tags = &options.Tags
+			}
 			if options.DryRun {
-				return a.renderDryRun("edit story", fmt.Sprintf("%s#%d", target.Project.Slug, target.Story.Ref), map[string]any{"base_version": request.Version, "subject": request.Subject, "description": request.Description, "status": options.Status, "sprint": options.Sprint})
+				return a.renderDryRun("edit story", fmt.Sprintf("%s#%d", target.Project.Slug, target.Story.Ref), map[string]any{"base_version": request.Version, "subject": request.Subject, "description": request.Description, "status": options.Status, "sprint": options.Sprint, "tags": options.Tags})
 			}
 			updated, err := target.Client.UpdateUserStory(cmd.Context(), target.Story.ID, request)
 			if err != nil {
@@ -259,6 +279,7 @@ func addStoryEditFlags(command *cobra.Command, options *editStoryOptions) {
 	command.Flags().StringVar(&options.Description, "description", "", "new description")
 	command.Flags().StringVar(&options.Status, "status", "", "status name")
 	command.Flags().StringVar(&options.Sprint, "sprint", "", "sprint name/slug, or backlog")
+	command.Flags().StringSliceVar(&options.Tags, "tags", nil, "replace all tags; repeat or comma-separate for multiple, pass an empty string to clear")
 	command.Flags().IntVar(&options.BaseVersion, "base-version", 0, "explicit Taiga base version")
 	command.Flags().BoolVar(&options.DryRun, "dry-run", false, "resolve and display the mutation without writing")
 }
@@ -440,8 +461,31 @@ func makeStoryView(story taiga.UserStory, projectSlug string) storyView {
 		Description: story.Description, Version: story.Version, Status: story.StatusExtraInfo.Name,
 		Sprint: story.MilestoneName, SprintSlug: story.MilestoneSlug, AssignedUsers: story.AssignedUsers,
 		TotalPoints: story.TotalPoints, Points: story.Points, IsClosed: story.IsClosed,
-		IsBlocked: story.IsBlocked, IsWatcher: story.IsWatcher, CreatedDate: story.CreatedDate, ModifiedDate: story.ModifiedDate,
+		IsBlocked: story.IsBlocked, IsWatcher: story.IsWatcher, Tags: tagNames(story.Tags), CreatedDate: story.CreatedDate, ModifiedDate: story.ModifiedDate,
 	}
+}
+
+func tagNames(tags []taiga.Tag) []string {
+	names := make([]string, len(tags))
+	for i, t := range tags {
+		names[i] = t.Name
+	}
+	return names
+}
+
+// normalizeTags trims whitespace from each tag and drops the ones that end
+// up empty. It never returns nil, so a result of zero tags still marshals
+// as "tags": [] rather than being dropped or sent as null.
+func normalizeTags(tags []string) []string {
+	result := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed == "" {
+			continue
+		}
+		result = append(result, trimmed)
+	}
+	return result
 }
 
 func (a *App) resolveStoryStatus(ctx context.Context, client *taiga.Client, projectID int64, name string, requireClosed bool) (taiga.UserStoryStatus, error) {

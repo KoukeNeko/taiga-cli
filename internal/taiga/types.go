@@ -1,5 +1,32 @@
 package taiga
 
+import "encoding/json"
+
+// Tag is a project tag as Taiga's API returns it on a work item: a
+// [name, color-or-null] pair, not a flat string. Requests still send tag
+// names as a flat []string; the API assigns/keeps colors on its own.
+type Tag struct {
+	Name  string
+	Color *string
+}
+
+func (t *Tag) UnmarshalJSON(data []byte) error {
+	var pair [2]*string
+	if err := json.Unmarshal(data, &pair); err != nil {
+		return err
+	}
+	var name string
+	if pair[0] != nil {
+		name = *pair[0]
+	}
+	*t = Tag{Name: name, Color: pair[1]}
+	return nil
+}
+
+func (t Tag) MarshalJSON() ([]byte, error) {
+	return json.Marshal([2]*string{&t.Name, t.Color})
+}
+
 type Page struct {
 	Number int `json:"number"`
 	Size   int `json:"size"`
@@ -224,6 +251,7 @@ type Issue struct {
 	IsClosed            bool       `json:"is_closed"`
 	IsWatcher           bool       `json:"is_watcher"`
 	IsVoter             bool       `json:"is_voter"`
+	Tags                []Tag      `json:"tags,omitempty"`
 	CreatedDate         string     `json:"created_date,omitempty"`
 	ModifiedDate        string     `json:"modified_date,omitempty"`
 }
@@ -254,15 +282,16 @@ type CreateIssueRequest struct {
 }
 
 type UpdateIssueRequest struct {
-	Version     int     `json:"version"`
-	Subject     *string `json:"subject,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Status      *int64  `json:"status,omitempty"`
-	Priority    *int64  `json:"priority,omitempty"`
-	Severity    *int64  `json:"severity,omitempty"`
-	Type        *int64  `json:"type,omitempty"`
-	AssignedTo  *int64  `json:"assigned_to,omitempty"`
-	Comment     *string `json:"comment,omitempty"`
+	Version     int       `json:"version"`
+	Subject     *string   `json:"subject,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	Status      *int64    `json:"status,omitempty"`
+	Priority    *int64    `json:"priority,omitempty"`
+	Severity    *int64    `json:"severity,omitempty"`
+	Type        *int64    `json:"type,omitempty"`
+	AssignedTo  *int64    `json:"assigned_to,omitempty"`
+	Tags        *[]string `json:"tags,omitempty"`
+	Comment     *string   `json:"comment,omitempty"`
 }
 
 type UserStory struct {
@@ -288,6 +317,7 @@ type UserStory struct {
 	BacklogOrder    int64            `json:"backlog_order"`
 	SprintOrder     int64            `json:"sprint_order"`
 	KanbanOrder     int64            `json:"kanban_order"`
+	Tags            []Tag            `json:"tags,omitempty"`
 	CreatedDate     string           `json:"created_date,omitempty"`
 	ModifiedDate    string           `json:"modified_date,omitempty"`
 }
@@ -328,22 +358,24 @@ type UpdateMilestoneRequest struct {
 }
 
 type CreateUserStoryRequest struct {
-	Project       int64   `json:"project"`
-	Subject       string  `json:"subject"`
-	Description   string  `json:"description,omitempty"`
-	Status        *int64  `json:"status,omitempty"`
-	Milestone     *int64  `json:"milestone,omitempty"`
-	AssignedUsers []int64 `json:"assigned_users,omitempty"`
+	Project       int64    `json:"project"`
+	Subject       string   `json:"subject"`
+	Description   string   `json:"description,omitempty"`
+	Status        *int64   `json:"status,omitempty"`
+	Milestone     *int64   `json:"milestone,omitempty"`
+	AssignedUsers []int64  `json:"assigned_users,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
 }
 
 type UpdateUserStoryRequest struct {
-	Version       int      `json:"version"`
-	Subject       *string  `json:"subject,omitempty"`
-	Description   *string  `json:"description,omitempty"`
-	Status        *int64   `json:"status,omitempty"`
-	Milestone     **int64  `json:"milestone,omitempty"`
-	AssignedUsers *[]int64 `json:"assigned_users,omitempty"`
-	Comment       *string  `json:"comment,omitempty"`
+	Version       int       `json:"version"`
+	Subject       *string   `json:"subject,omitempty"`
+	Description   *string   `json:"description,omitempty"`
+	Status        *int64    `json:"status,omitempty"`
+	Milestone     **int64   `json:"milestone,omitempty"`
+	AssignedUsers *[]int64  `json:"assigned_users,omitempty"`
+	Tags          *[]string `json:"tags,omitempty"`
+	Comment       *string   `json:"comment,omitempty"`
 }
 
 type TaskStoryInfo struct {
