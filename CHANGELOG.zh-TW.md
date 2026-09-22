@@ -8,9 +8,17 @@ Release workflow 會把對應版本的段落與英文版 [CHANGELOG.md](CHANGELO
 
 ## [未發布]
 
+## [0.8.0] - 2026-09-22
+
+現在可以直接從命令列替 user story 與 issue 加上標籤。建立或編輯工作項目時用 `--tags` 設定，`list`、`view` 與 `--json` 也會顯示標籤，查看或修改標籤不必再回到網頁介面。
+
 ### 新增
 
 - `story create`、`story edit`、`issue create` 與 `issue edit` 新增 `--tags`，用來設定工作項目的標籤。可重複指定該旗標，或以逗號分隔多個值；每個值前後的空白會自動去除。在 `edit` 中會直接取代整組標籤，傳入空字串則會清空。Taiga 會自動將標籤轉為小寫，因此 `Mixed Case` 會存成 `mixed case`。`story list`、`story view`、`issue list` 與 `issue view` 現在也會顯示 `TAGS` 欄位／`Tags` 列，`--json` 一律會提供 `tags` 陣列，即使沒有任何標籤也一樣。
+
+### 貢獻者
+
+- @deep9（Ondrej Huta）在 [#3](https://github.com/KoukeNeko/taiga-cli/pull/3) 為 story 與 issue 加入標籤支援。感謝！
 
 ## [0.7.0] - 2026-09-14
 
@@ -247,7 +255,8 @@ brew install koukeneko/tap/aihki
 
 已針對 Taiga 6.10.2 以固定 image digest 執行完整 Docker E2E 驗證。支援 macOS、Linux、Windows 的 `amd64` 與 `arm64`。
 
-[未發布]: https://github.com/KoukeNeko/taiga-cli/compare/v0.7.0...HEAD
+[未發布]: https://github.com/KoukeNeko/taiga-cli/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.8.0
 [0.7.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.7.0
 [0.6.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.6.0
 [0.5.2]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.5.2

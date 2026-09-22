@@ -8,9 +8,17 @@ The release workflow publishes the section matching the tag as the GitHub Releas
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-22
+
+Stories and issues can now carry tags from the command line. `--tags` sets them when you create or edit a work item, and `list`, `view` and `--json` show them, so reading or changing a work item's tags no longer needs the web UI.
+
 ### Added
 
 - `--tags` on `story create`, `story edit`, `issue create`, and `issue edit` sets a work item's tags. Repeat the flag or comma-separate values for more than one; whitespace around each value is trimmed. On `edit` it replaces the full tag list, and passing an empty string clears it. Taiga lowercases tag names on its own, so `Mixed Case` is stored as `mixed case`. `story list`, `story view`, `issue list`, and `issue view` now show a `TAGS` column and `Tags` line, and `--json` always carries a `tags` array, even when there are no tags.
+
+### Contributors
+
+- @deep9 (Ondrej Huta) added tag support to stories and issues in [#3](https://github.com/KoukeNeko/taiga-cli/pull/3). Thank you!
 
 ## [0.7.0] - 2026-09-14
 
@@ -247,7 +255,8 @@ Or download the archive for your platform below, verify it against `SHA256SUMS`,
 
 Verified against Taiga 6.10.2 through a full Docker E2E run against a pinned image digest. Supports macOS, Linux, and Windows on `amd64` and `arm64`.
 
-[Unreleased]: https://github.com/KoukeNeko/taiga-cli/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/KoukeNeko/taiga-cli/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.8.0
 [0.7.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.7.0
 [0.6.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.6.0
 [0.5.2]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.5.2
