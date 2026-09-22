@@ -420,8 +420,8 @@ func TestTagsFlagSendsNormalizedRequestBody(t *testing.T) {
 		if !ok {
 			t.Fatalf("body missing tags key: %#v", body)
 		}
-		got, _ := raw.([]any)
-		if len(got) != len(want) {
+		got, ok := raw.([]any)
+		if !ok || len(got) != len(want) {
 			t.Fatalf("tags = %#v, want %#v", raw, want)
 		}
 		for i := range want {
