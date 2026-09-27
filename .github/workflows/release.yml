@@ -176,9 +176,35 @@ jobs:
               commit -m "taiga $GITHUB_REF_NAME"
           git push
           echo "Updated koukeneko/tap to $GITHUB_REF_NAME."
+      - name: Update the Scoop bucket
+        # Stable releases only, as with the tap. The manifest's checkver and
+        # autoupdate never run on their own, which left the bucket three
+        # releases behind before this step existed.
+        if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          test -n "$BUCKET_TOKEN" || (echo "SCOOP_BUCKET_TOKEN is required to update the Scoop bucket" >&2; exit 1)
+          manifest="$RUNNER_TEMP/taiga-cli.json"
+          ./scripts/render-scoop-manifest.sh "$GITHUB_REF_NAME" "dist/$GITHUB_REF_NAME/SHA256SUMS" > "$manifest"
+          bucket="$RUNNER_TEMP/scoop-bucket"
+          git clone --depth 1 "https://x-access-token:$BUCKET_TOKEN@github.com/KoukeNeko/scoop-bucket.git" "$bucket" 2>/dev/null
+          mkdir -p "$bucket/bucket"
+          cp "$manifest" "$bucket/bucket/taiga-cli.json"
+          cd "$bucket"
+          git add bucket/taiga-cli.json
+          if git diff --cached --quiet; then
+            echo "The bucket already carries this manifest."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "taiga-cli $GITHUB_REF_NAME"
+          git push
+          echo "Updated koukeneko/scoop-bucket to $GITHUB_REF_NAME."
       - name: Remove signing material
         if: always()
         run: |
           rm -f "$RUNNER_TEMP/asc-key.p8" "$RUNNER_TEMP/certificate.p12"
-          rm -rf "$RUNNER_TEMP/homebrew-tap"
+          rm -rf "$RUNNER_TEMP/homebrew-tap" "$RUNNER_TEMP/scoop-bucket"
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
