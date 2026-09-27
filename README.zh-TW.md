@@ -44,7 +44,7 @@ taiga issue view 42 --json --fields ref,subject,status,version
 
 一個獨立的 [Taiga 6](https://taiga.io/) 命令列客戶端，與 Taiga 專案並無隸屬關係。它讓你不必離開終端機
 就能操作專案、敏捷流程與 Wiki，會自動從 frontend 的 `conf.json` 找出 API 位置，包括部署在 `/taiga/`
-子路徑的站台，登入後把 token 交給作業系統 keyring 保管，不寫進設定檔。
+子路徑的站台，登入後把 token 交給作業系統 keyring 保管（Linux 上則存進只有你能讀取的檔案），不寫進設定檔。
 
 **同一個指令同時服務人與程式。** 直接執行時輸出對齊的表格；加上 `--json` 就得到帶版本號的 contract，
 搭配固定 exit code 與 JSON Schema descriptor，可以放心讓 Shell script、CI job 或 LLM agent 驅動。輸出格式
@@ -167,21 +167,21 @@ taiga project use example-project --local
    Windows 安裝後請開新的終端機，PATH 變更才會生效。
 
 2. **登入**。直接執行，回答兩個問題：你的 Taiga 裡任何一頁的網址（預設為官方託管的 Taiga）、你的帳號怎麼登入。
-   token 會存進 OS keyring：
+   在 macOS 與 Windows 上，token 會存進 OS keyring：
 
    ```sh
    taiga auth login
    ```
 
-   沒有桌面環境的 Linux 伺服器、容器或 SSH 連線通常沒有 keyring 服務，這時 token 會改存到
-   `~/.config/taiga-cli/credentials.json`（只有你的使用者能讀取），登入時也會提示。keyring 存在但被鎖住時會
-   直接回報錯誤，不會繞過 keyring 改存檔案。`taiga auth status` 每次都會顯示憑證存放在哪裡。
+   在 Linux 上，token 會存到 `~/.config/taiga-cli/credentials.json`（只有你的使用者能讀取），登入時也會提示。
+   Linux 的 keyring 常常是鎖住的，而且像 SSH 連線這樣沒有桌面可以解鎖，所以只有指定
+   `--credential-store=keyring` 時才會使用。`taiga auth status` 每次都會顯示憑證存放在哪裡。
 
    也可以用 `--credential-store`（或 `TAIGA_CREDENTIAL_STORE`）指定存放方式，不交給 `auto` 自動判斷：
 
    | 值 | 行為 |
    | --- | --- |
-   | `auto` | 使用 OS keyring；只有確定沒有 keyring 服務時才改存檔案（預設） |
+   | `auto` | Linux 上使用檔案；其他平台使用 OS keyring，只有確定沒有 keyring 服務時才改存檔案（預設） |
    | `keyring` | 只用 OS keyring；無法使用時直接回報錯誤，不寫檔案 |
    | `file` | 只用檔案，完全不接觸 keyring，適合伺服器 |
    | `none` | 不儲存任何憑證；請以 `TAIGA_TOKEN` 傳入 token |

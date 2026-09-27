@@ -180,7 +180,7 @@ func (a *App) rootCommand() *cobra.Command {
 	flags.BoolVar(&a.global.NoColor, "no-color", false, "disable color output")
 	flags.BoolVarP(&a.global.Quiet, "quiet", "q", false, "suppress non-essential human output")
 	flags.BoolVarP(&a.global.Verbose, "verbose", "v", false, "print redacted HTTP diagnostics to stderr")
-	flags.StringVar(&a.global.CredentialStore, "credential-store", "", "where to keep credentials: auto (the OS keyring, or a file where there is none), keyring, file or none; also TAIGA_CREDENTIAL_STORE")
+	flags.StringVar(&a.global.CredentialStore, "credential-store", "", "where to keep credentials: auto (a file on Linux; elsewhere the OS keyring, or a file where there is none), keyring, file or none; also TAIGA_CREDENTIAL_STORE")
 	_ = root.RegisterFlagCompletionFunc("profile", a.completeProfiles)
 	_ = root.RegisterFlagCompletionFunc("project", a.completeProjects)
 	root.AddCommand(

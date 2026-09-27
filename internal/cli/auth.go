@@ -130,11 +130,14 @@ func (a *App) login(ctx context.Context, options loginOptions) error {
 		if saved.File != "" {
 			// The README promises the keyring, so a credential that went to a
 			// file instead says where, rather than leaving that to be found.
-			// Only auto mode went looking for a keyring, so only it may say
-			// that there was none.
-			if mode, _ := a.credentialMode(); mode == credential.ModeFile {
+			// Only auto mode away from Linux went looking for a keyring, so
+			// only it may say that there was none.
+			switch mode, _ := a.credentialMode(); {
+			case mode == credential.ModeFile:
 				_, _ = fmt.Fprintf(a.Err, "The credential was saved to %s, as --credential-store=file asks, and only your user can read it.\n", saved.File)
-			} else {
+			case mode.Resolve() == credential.ModeFile:
+				_, _ = fmt.Fprintf(a.Err, "The credential was saved to %s, which only your user can read; on Linux the OS keyring is used only with --credential-store=keyring.\n", saved.File)
+			default:
 				_, _ = fmt.Fprintf(a.Err, "No OS keyring is available, so the credential was saved to %s, which only your user can read.\n", saved.File)
 			}
 		}

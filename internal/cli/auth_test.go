@@ -336,7 +336,8 @@ func TestTokenLoginSaysHowToGetARefreshToken(t *testing.T) {
 }
 
 // Where there is no OS keyring the credential lands in a file, and the login
-// says which, since the README tells people to expect the keyring.
+// says which, since the README tells people to expect the keyring. On Linux
+// auto mode never looks for one, so the notice says that instead.
 func TestLoginSaysWhenTheCredentialWentToAFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"id":1,"username":"demo"}`)
@@ -359,7 +360,11 @@ func TestLoginSaysWhenTheCredentialWentToAFile(t *testing.T) {
 			}
 			continue
 		}
-		if !strings.Contains(stderr.String(), "No OS keyring is available, so the credential was saved to /home/demo/.config/taiga-cli/credentials.json") {
+		want := "No OS keyring is available, so the credential was saved to /home/demo/.config/taiga-cli/credentials.json"
+		if credential.ModeAuto.Resolve() == credential.ModeFile {
+			want = "The credential was saved to /home/demo/.config/taiga-cli/credentials.json, which only your user can read; on Linux the OS keyring is used only with --credential-store=keyring"
+		}
+		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("stderr = %q", stderr.String())
 		}
 	}

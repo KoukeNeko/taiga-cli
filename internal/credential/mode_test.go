@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,27 @@ func TestParseMode(t *testing.T) {
 	_, err := ParseMode("vault")
 	if err == nil || !strings.Contains(err.Error(), "auto, keyring, file, none") {
 		t.Fatalf("ParseMode(vault) = %v, want the valid modes listed", err)
+	}
+}
+
+// On Linux auto mode is the file, so a locked keyring with no desktop to
+// unlock it on cannot stop a login; elsewhere it is still the keyring.
+func TestAutoModeUsesTheFileOnlyOnLinux(t *testing.T) {
+	want := ModeAuto
+	if runtime.GOOS == "linux" {
+		want = ModeFile
+	}
+	if got := ModeAuto.Resolve(); got != want {
+		t.Fatalf("ModeAuto.Resolve() = %q, want %q", got, want)
+	}
+	for _, mode := range []Mode{ModeKeyring, ModeFile, ModeNone} {
+		if got := mode.Resolve(); got != mode {
+			t.Errorf("%q.Resolve() = %q", mode, got)
+		}
+	}
+	_, isFile := NewStore(ModeAuto, t.TempDir()).(*FileStore)
+	if isFile != (want == ModeFile) {
+		t.Fatalf("NewStore(auto) gave a file store = %v on %s", isFile, runtime.GOOS)
 	}
 }
 
