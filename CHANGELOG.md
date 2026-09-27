@@ -8,6 +8,10 @@ The release workflow publishes the section matching the tag as the GitHub Releas
 
 ## [Unreleased]
 
+### Changed
+
+- On Linux, `auto`, the default `--credential-store`, now keeps credentials in `~/.config/taiga-cli/credentials.json`, readable only by your user, and never contacts the OS keyring. A Linux keyring is often locked with no desktop to unlock it on, as over SSH, and `auth login` used to take the password and then fail with `write OS keyring: failed to unlock correct collection`. `--credential-store=keyring` still uses the keyring, and macOS and Windows are unchanged. **A credential already in a Linux keyring is not read under `auto`, so run `taiga auth login` once after upgrading**, or pass `--credential-store=keyring` to keep using it.
+
 ## [0.8.0] - 2026-09-22
 
 Stories and issues can now carry tags from the command line. `--tags` sets them when you create or edit a work item, and `list`, `view` and `--json` show them, so reading or changing a work item's tags no longer needs the web UI.

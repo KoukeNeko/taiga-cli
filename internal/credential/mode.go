@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -12,8 +13,8 @@ import (
 type Mode string
 
 const (
-	// ModeAuto uses the OS keyring, and the credentials file only where
-	// there is provably no keyring.
+	// ModeAuto uses the credentials file on Linux, and elsewhere the OS
+	// keyring, with the file only where there is provably no keyring.
 	ModeAuto Mode = "auto"
 	// ModeKeyring uses only the OS keyring, and fails when it cannot.
 	ModeKeyring Mode = "keyring"
@@ -48,11 +49,26 @@ func ParseMode(value string) (Mode, error) {
 	return "", fmt.Errorf("unknown credential store %q; use one of %s", value, strings.Join(names, ", "))
 }
 
+// autoUsesFile is set where auto mode keeps credentials in the file, guarded
+// by file permissions, and never asks the OS keyring. On Linux the Secret
+// Service is often locked with no desktop on which to unlock it, as over SSH,
+// so a keyring there fails more logins than it protects.
+var autoUsesFile = runtime.GOOS == "linux"
+
+// Resolve returns the mode that m stands for on this platform: auto becomes
+// file where auto uses the file, and every other mode is itself.
+func (m Mode) Resolve() Mode {
+	if m == ModeAuto && autoUsesFile {
+		return ModeFile
+	}
+	return m
+}
+
 // NewStore returns the store for mode, keeping its files in directory.
 func NewStore(mode Mode, directory string) Store {
 	file := &fileStore{path: filepath.Join(directory, FileName)}
 	lockPath := filepath.Join(directory, lockFileName)
-	switch mode {
+	switch mode.Resolve() {
 	case ModeFile:
 		return &FileStore{file: file, lockPath: lockPath}
 	case ModeNone:

@@ -45,7 +45,8 @@ taiga issue view 42 --json --fields ref,subject,status,version
 An independent command-line client for [Taiga 6](https://taiga.io/), not affiliated with the Taiga
 project. It drives projects, agile workflows, and wikis without leaving the terminal, discovers the
 API from the frontend's `conf.json`, including sites deployed under a `/taiga/` subpath, and hands the
-token to your operating system keyring instead of writing it into a config file.
+token to your operating system keyring (on Linux, a file only you can read) instead of writing it
+into a config file.
 
 **One command serves both people and programs.** Run it directly and you get aligned tables; add
 `--json` and you get a versioned contract, backed by fixed exit codes and JSON Schema descriptors, so
@@ -185,23 +186,23 @@ interface, without running another service.
    [INSTALL.md](INSTALL.md). On Windows, open a new terminal afterwards to pick up the PATH change.
 
 2. **Log in.** Run it with nothing else and answer two questions: the URL of any page inside your
-   Taiga, with the hosted Taiga offered as the default, and how your account signs in. The token
-   goes to the OS keyring:
+   Taiga, with the hosted Taiga offered as the default, and how your account signs in. On macOS and
+   Windows the token goes to the OS keyring:
 
    ```sh
    taiga auth login
    ```
 
-   A Linux server, container, or SSH session without a desktop usually has no keyring service. There
-   the token goes to `~/.config/taiga-cli/credentials.json` instead, readable only by your user, and
-   the login says so. A keyring that exists but is locked is reported as an error rather than
-   bypassed. `taiga auth status` always says where the credential is kept.
+   On Linux the token goes to `~/.config/taiga-cli/credentials.json`, readable only by your user, and
+   the login says so. A Linux keyring is often locked with no desktop to unlock it on, as over SSH, so
+   it is used only when you ask for it with `--credential-store=keyring`. `taiga auth status` always
+   says where the credential is kept.
 
    `--credential-store` (or `TAIGA_CREDENTIAL_STORE`) chooses this instead of leaving it to `auto`:
 
    | Value | Behaviour |
    | --- | --- |
-   | `auto` | The OS keyring, or the file only where there is provably no keyring service (default) |
+   | `auto` | The file on Linux; elsewhere the OS keyring, or the file only where there is provably no keyring service (default) |
    | `keyring` | The OS keyring only; fail rather than write a file |
    | `file` | The file only; never contact a keyring. Suits servers |
    | `none` | Keep nothing; pass the token in `TAIGA_TOKEN` |

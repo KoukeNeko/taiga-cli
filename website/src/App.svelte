@@ -396,7 +396,8 @@
         <div>
           <h3><span>04</span> Credentials stay private</h3>
           <p>
-            Tokens go to your OS keyring. Sensitive secrets stay out of output,
+            Tokens go to your OS keyring, or on Linux to a file only you can
+            read. Sensitive secrets stay out of output,
             including dry runs.
           </p>
         </div>

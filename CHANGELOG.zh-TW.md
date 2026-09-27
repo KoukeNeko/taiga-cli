@@ -8,6 +8,10 @@ Release workflow 會把對應版本的段落與英文版 [CHANGELOG.md](CHANGELO
 
 ## [未發布]
 
+### 變更
+
+- 在 Linux 上，預設的 `--credential-store`（`auto`）現在會把憑證存到 `~/.config/taiga-cli/credentials.json`（只有你的使用者能讀取），完全不接觸 OS keyring。Linux 的 keyring 常常是鎖住的，而且像 SSH 連線這樣沒有桌面可以解鎖；過去 `auth login` 會先收下密碼，最後才以 `write OS keyring: failed to unlock correct collection` 失敗。`--credential-store=keyring` 仍會使用 keyring，macOS 與 Windows 的行為不變。**`auto` 不會讀取已經存在 Linux keyring 裡的憑證，升級後請執行一次 `taiga auth login`**，或加上 `--credential-store=keyring` 繼續使用原本的憑證。
+
 ## [0.8.0] - 2026-09-22
 
 現在可以直接從命令列替 user story 與 issue 加上標籤。建立或編輯工作項目時用 `--tags` 設定，`list`、`view` 與 `--json` 也會顯示標籤，查看或修改標籤不必再回到網頁介面。

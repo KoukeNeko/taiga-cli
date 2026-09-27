@@ -211,7 +211,9 @@ taiga completion powershell
 
 1. Read that version's release notes and [COMPATIBILITY.md](COMPATIBILITY.md).
 2. Download and verify the new archive.
-3. Replace the old binary. Config files and OS keyring credentials do not need to move.
+3. Replace the old binary. Config files and OS keyring credentials do not need to move. On Linux,
+   coming from 0.8.0 or earlier, run `taiga auth login` once, since a credential in the Linux
+   keyring is no longer read by default.
 4. Run `taiga version --json` to confirm the version, commit, and platform.
 5. Run `taiga doctor --json` to confirm the API, authentication, and default project.
 

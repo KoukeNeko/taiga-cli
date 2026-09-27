@@ -194,7 +194,8 @@ taiga completion powershell
 
 1. 先閱讀該版本 Release Notes 與 [COMPATIBILITY.zh-TW.md](COMPATIBILITY.zh-TW.md)。
 2. 下載並驗證新 archive。
-3. 以新 binary 取代舊 binary；設定檔與 OS keyring credential 不需搬移。
+3. 以新 binary 取代舊 binary；設定檔與 OS keyring credential 不需搬移。在 Linux 上從 0.8.0 或更早的版本升級時，
+   請執行一次 `taiga auth login`，因為預設不再讀取 Linux keyring 裡的憑證。
 4. 執行 `taiga version --json` 確認版本、commit 與平台。
 5. 執行 `taiga doctor --json` 確認 API、authentication 與預設 Project。
 
