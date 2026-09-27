@@ -8,6 +8,10 @@ The release workflow publishes the section matching the tag as the GitHub Releas
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-28
+
+On Linux, a locked Secret Service with no desktop to unlock it on, as over SSH, used to take your password and only then fail with `write OS keyring: failed to unlock correct collection`. Credentials there now go straight to a private file by default.
+
 ### Changed
 
 - On Linux, `auto`, the default `--credential-store`, now keeps credentials in `~/.config/taiga-cli/credentials.json`, readable only by your user, and never contacts the OS keyring. A Linux keyring is often locked with no desktop to unlock it on, as over SSH, and `auth login` used to take the password and then fail with `write OS keyring: failed to unlock correct collection`. `--credential-store=keyring` still uses the keyring, and macOS and Windows are unchanged. **A credential already in a Linux keyring is not read under `auto`, so run `taiga auth login` once after upgrading**, or pass `--credential-store=keyring` to keep using it.
@@ -259,7 +263,8 @@ Or download the archive for your platform below, verify it against `SHA256SUMS`,
 
 Verified against Taiga 6.10.2 through a full Docker E2E run against a pinned image digest. Supports macOS, Linux, and Windows on `amd64` and `arm64`.
 
-[Unreleased]: https://github.com/KoukeNeko/taiga-cli/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/KoukeNeko/taiga-cli/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.9.0
 [0.8.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.8.0
 [0.7.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.7.0
 [0.6.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.6.0

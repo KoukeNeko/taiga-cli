@@ -8,6 +8,10 @@ Release workflow 會把對應版本的段落與英文版 [CHANGELOG.md](CHANGELO
 
 ## [未發布]
 
+## [0.9.0] - 2026-09-28
+
+在 Linux 上，被鎖住的 keyring 若沒有桌面可以解鎖（例如 SSH 連線），過去會先收下密碼，最後才以 `write OS keyring: failed to unlock correct collection` 失敗。現在 Linux 預設會直接把憑證存到只有你能讀取的檔案。
+
 ### 變更
 
 - 在 Linux 上，預設的 `--credential-store`（`auto`）現在會把憑證存到 `~/.config/taiga-cli/credentials.json`（只有你的使用者能讀取），完全不接觸 OS keyring。Linux 的 keyring 常常是鎖住的，而且像 SSH 連線這樣沒有桌面可以解鎖；過去 `auth login` 會先收下密碼，最後才以 `write OS keyring: failed to unlock correct collection` 失敗。`--credential-store=keyring` 仍會使用 keyring，macOS 與 Windows 的行為不變。**`auto` 不會讀取已經存在 Linux keyring 裡的憑證，升級後請執行一次 `taiga auth login`**，或加上 `--credential-store=keyring` 繼續使用原本的憑證。
@@ -259,7 +263,8 @@ brew install koukeneko/tap/aihki
 
 已針對 Taiga 6.10.2 以固定 image digest 執行完整 Docker E2E 驗證。支援 macOS、Linux、Windows 的 `amd64` 與 `arm64`。
 
-[未發布]: https://github.com/KoukeNeko/taiga-cli/compare/v0.8.0...HEAD
+[未發布]: https://github.com/KoukeNeko/taiga-cli/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.9.0
 [0.8.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.8.0
 [0.7.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.7.0
 [0.6.0]: https://github.com/KoukeNeko/taiga-cli/releases/tag/v0.6.0
