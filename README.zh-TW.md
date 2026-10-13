@@ -27,6 +27,7 @@
   · <a href="https://github.com/KoukeNeko/taiga-cli/wiki">使用手冊</a>
   · <a href="CHANGELOG.zh-TW.md">版本紀錄</a>
   · <a href="COMPATIBILITY.zh-TW.md">相容性</a>
+  · <a href="PRIVACY.zh-TW.md">隱私</a>
 </p>
 
 ```sh

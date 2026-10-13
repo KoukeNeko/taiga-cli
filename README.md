@@ -27,6 +27,7 @@
   · <a href="https://github.com/KoukeNeko/taiga-cli/wiki">Handbook</a>
   · <a href="CHANGELOG.md">Changelog</a>
   · <a href="COMPATIBILITY.md">Compatibility</a>
+  · <a href="PRIVACY.md">Privacy</a>
 </p>
 
 ```sh
